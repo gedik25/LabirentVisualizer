@@ -162,11 +162,8 @@ sf::Color Renderer::getCellColor(int x, int y) const {
   const auto &theme = getTheme();
   uint8_t cell = m_grid->getCell(x, y);
 
-  // Priority: Path > Current > Visited > Queued > Empty
-
-  if (hasFlag(cell, CellFlags::InPath)) {
-    return theme.path;
-  }
+  // Priority: Current > Visited > Queued > Empty
+  // InPath is rendered as overlay in renderPath()
 
   if (hasFlag(cell, CellFlags::Current)) {
     // During generation, use generation color
@@ -227,7 +224,53 @@ void Renderer::renderTerrain() {
 }
 
 void Renderer::renderPath() {
-  // Path is now rendered as part of renderCell (full fill)
+  if (!m_grid)
+    return;
+
+  Camera::CellRange range = m_camera.getVisibleCells(
+      m_cellSize, m_grid->getWidth(), m_grid->getHeight());
+
+  const auto &theme = getTheme();
+  float pathSize = m_cellSize * 0.35f; // 35% of cell size - thin line
+  float offset = (m_cellSize - pathSize) / 2.0f;
+
+  sf::RectangleShape pathRect({pathSize, pathSize});
+  pathRect.setFillColor(theme.path);
+
+  for (int y = range.minY; y <= range.maxY; ++y) {
+    for (int x = range.minX; x <= range.maxX; ++x) {
+      uint8_t cell = m_grid->getCell(x, y);
+
+      if (hasFlag(cell, CellFlags::InPath)) {
+        float px = x * m_cellSize;
+        float py = y * m_cellSize;
+
+        // Draw center node
+        pathRect.setPosition({px + offset, py + offset});
+        m_window.draw(pathRect);
+
+        // Draw connecting lines to adjacent path cells ONLY if no wall blocks
+        // East connection (check if we can actually move East)
+        if (x + 1 < m_grid->getWidth() &&
+            hasFlag(m_grid->getCell(x + 1, y), CellFlags::InPath) &&
+            m_grid->canMove({x, y}, Direction::East)) {
+          sf::RectangleShape conn({m_cellSize - pathSize, pathSize});
+          conn.setPosition({px + offset + pathSize, py + offset});
+          conn.setFillColor(theme.path);
+          m_window.draw(conn);
+        }
+        // South connection (check if we can actually move South)
+        if (y + 1 < m_grid->getHeight() &&
+            hasFlag(m_grid->getCell(x, y + 1), CellFlags::InPath) &&
+            m_grid->canMove({x, y}, Direction::South)) {
+          sf::RectangleShape conn({pathSize, m_cellSize - pathSize});
+          conn.setPosition({px + offset, py + offset + pathSize});
+          conn.setFillColor(theme.path);
+          m_window.draw(conn);
+        }
+      }
+    }
+  }
 }
 
 void Renderer::renderUI(const std::string &status, int animationDelay) {
