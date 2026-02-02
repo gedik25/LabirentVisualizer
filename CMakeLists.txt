@@ -25,6 +25,10 @@ set(SOURCES
     src/Core/Maze.cpp
     src/Algorithms/BFSSolver.cpp
     src/Algorithms/DFSSolver.cpp
+    src/Algorithms/AStarSolver.cpp
+    src/Algorithms/DijkstraSolver.cpp
+    src/Algorithms/GreedySolver.cpp
+    src/Algorithms/BidirectionalBFS.cpp
     src/Visualization/Camera.cpp
     src/Visualization/Renderer.cpp
     src/Visualization/UIPanel.cpp
@@ -38,6 +42,10 @@ set(HEADERS
     src/Algorithms/ISolver.hpp
     src/Algorithms/BFSSolver.hpp
     src/Algorithms/DFSSolver.hpp
+    src/Algorithms/AStarSolver.hpp
+    src/Algorithms/DijkstraSolver.hpp
+    src/Algorithms/GreedySolver.hpp
+    src/Algorithms/BidirectionalBFS.hpp
     src/Visualization/Theme.hpp
     src/Visualization/Camera.hpp
     src/Visualization/Renderer.hpp
