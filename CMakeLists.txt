@@ -27,6 +27,7 @@ set(SOURCES
     src/Algorithms/DFSSolver.cpp
     src/Visualization/Camera.cpp
     src/Visualization/Renderer.cpp
+    src/Visualization/UIPanel.cpp
 )
 
 # Header files (for IDE support)
@@ -40,6 +41,7 @@ set(HEADERS
     src/Visualization/Theme.hpp
     src/Visualization/Camera.hpp
     src/Visualization/Renderer.hpp
+    src/Visualization/UIPanel.hpp
 )
 
 # Create executable

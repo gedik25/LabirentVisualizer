@@ -11,6 +11,7 @@
 #include "Visualization/Camera.hpp"
 #include "Visualization/Renderer.hpp"
 #include "Visualization/Theme.hpp"
+#include "Visualization/UIPanel.hpp"
 
 using namespace maze;
 
@@ -56,6 +57,7 @@ void printHelp() {
               << "1        - Small maze (25x25)\n"
               << "2        - Medium maze (100x100)\n"
               << "3        - Large maze (500x500)\n"
+              << "H        - Toggle help panel\n"
               << "ESC      - Exit\n"
               << "================================\n\n";
 }
@@ -124,6 +126,15 @@ int main() {
     renderer.autoCalculateCellSize();
     camera.fitToMaze(grid->getWidth(), grid->getHeight(), renderer.getCellSize());
     
+    // UI Panel
+    UIPanel uiPanel;
+    if (!uiPanel.init(window)) {
+        std::cout << "Warning: Could not load font, UI panel disabled\n";
+    }
+    uiPanel.setGridSize(config.gridWidth, config.gridHeight);
+    uiPanel.setAnimationEnabled(config.animationEnabled);
+    uiPanel.setAnimationDelay(config.animationDelay);
+    
     // Solvers
     ISolver* currentSolver = nullptr;
     auto bfsSolver = std::make_unique<BFSSolver>(grid);
@@ -151,6 +162,11 @@ int main() {
         // Disable animation for large mazes
         config.animationEnabled = (width * height) < 
             (Config::AnimationDisableThreshold * Config::AnimationDisableThreshold);
+        
+        // Update UI panel
+        uiPanel.setGridSize(width, height);
+        uiPanel.setAnimationEnabled(config.animationEnabled);
+        uiPanel.setAlgorithmName("");
         
         state = AppState::Idle;
         std::cout << "\nGrid resized to " << width << "x" << height;
@@ -185,6 +201,7 @@ int main() {
                         currentSolver = nullptr;
                         state = AppState::Generating;
                         renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
+                        uiPanel.setAlgorithmName("");
                         break;
                         
                     case sf::Keyboard::Key::Enter:
@@ -195,13 +212,20 @@ int main() {
                         currentSolver = nullptr;
                         state = AppState::Idle;
                         renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
+                        uiPanel.setAlgorithmName("");
                         std::cout << "\nMaze generated instantly!" << std::endl;
                         break;
                         
                     case sf::Keyboard::Key::Space:
                         // Toggle animation
                         config.animationEnabled = !config.animationEnabled;
+                        uiPanel.setAnimationEnabled(config.animationEnabled);
                         std::cout << "\nAnimation " << (config.animationEnabled ? "ENABLED" : "DISABLED") << std::endl;
+                        break;
+                        
+                    case sf::Keyboard::Key::H:
+                        // Toggle help panel
+                        uiPanel.toggleHelp();
                         break;
                         
                     case sf::Keyboard::Key::B:
@@ -232,7 +256,9 @@ int main() {
                         if (currentSolver) {
                             currentSolver->reset();
                         }
+                        currentSolver = nullptr;
                         state = AppState::Idle;
+                        uiPanel.setAlgorithmName("");
                         break;
                         
                     case sf::Keyboard::Key::C:
@@ -244,6 +270,7 @@ int main() {
                         }
                         currentSolver = nullptr;
                         state = AppState::Idle;
+                        uiPanel.setAlgorithmName("");
                         break;
                         
                     case sf::Keyboard::Key::F:
@@ -268,12 +295,14 @@ int main() {
                     case sf::Keyboard::Key::Add:
                         config.animationDelay = std::max(Config::MinDelay, 
                                                          config.animationDelay - 5);
+                        uiPanel.setAnimationDelay(config.animationDelay);
                         break;
                         
                     case sf::Keyboard::Key::Hyphen:  // - key
                     case sf::Keyboard::Key::Subtract:
                         config.animationDelay = std::min(Config::MaxDelay, 
                                                          config.animationDelay + 5);
+                        uiPanel.setAnimationDelay(config.animationDelay);
                         break;
                         
                     // Camera pan
@@ -356,9 +385,39 @@ int main() {
             printStatus(state, config, currentSolver);
         }
         
+        // Update UI panel
+        switch (state) {
+            case AppState::Idle:
+                uiPanel.setState("Idle");
+                break;
+            case AppState::Generating:
+                uiPanel.setState("Generating...");
+                break;
+            case AppState::Solving:
+                uiPanel.setState("Solving...");
+                break;
+            case AppState::Finished:
+                uiPanel.setState(currentSolver && currentSolver->foundPath() ? "Path Found!" : "No Path");
+                break;
+        }
+        
+        // Update algorithm stats
+        if (currentSolver) {
+            auto stats = currentSolver->getStats();
+            uiPanel.setAlgorithmName(currentSolver->getName());
+            uiPanel.setNodesVisited(stats.nodesVisited);
+            uiPanel.setQueueSize(stats.nodesInQueue);
+            uiPanel.setPathLength(stats.pathLength);
+            uiPanel.setElapsedTime(stats.elapsedTime);
+        }
+        
+        // Update FPS
+        uiPanel.setFPS(renderer.getStats().fps);
+        
         // Render
         renderer.clear();
         renderer.render();
+        uiPanel.render(window);
         renderer.display();
     }
     
