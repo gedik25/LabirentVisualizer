@@ -492,8 +492,10 @@ void ComparisonView::renderMiniGrid(sf::RenderWindow &window, Grid &grid,
       TerrainType terrain = grid.getTerrain(x, y);
       sf::Color color = getTerrainColor(terrain);
 
-      // Override with solver state colors (InPath rendered as overlay below)
-      if (hasFlag(flags, CellFlags::Current)) {
+      // Override with solver state colors - InPath has highest priority
+      if (hasFlag(flags, CellFlags::InPath)) {
+        color = sf::Color{255, 0, 255}; // Magenta for path (full cell)
+      } else if (hasFlag(flags, CellFlags::Current)) {
         color = sf::Color{255, 255, 0}; // Yellow for current
       } else if (hasFlag(flags, CellFlags::Visited)) {
         color = visitedColor;
@@ -538,34 +540,7 @@ void ComparisonView::renderMiniGrid(sf::RenderWindow &window, Grid &grid,
         window.draw(wallV);
       }
 
-      // Draw thin path overlay
-      if (hasFlag(flags, CellFlags::InPath)) {
-        float pathSize = cellSize * 0.35f;
-        float pathOffset = (cellSize - pathSize) / 2.0f;
-
-        // Center node
-        sf::RectangleShape pathRect({pathSize, pathSize});
-        pathRect.setPosition({px + pathOffset, py + pathOffset});
-        pathRect.setFillColor(sf::Color{255, 0, 255}); // Magenta
-        window.draw(pathRect);
-
-        // East connection (with wall check)
-        if (x + 1 < w && hasFlag(grid.getCell(x + 1, y), CellFlags::InPath) &&
-            grid.canMove({x, y}, Direction::East)) {
-          sf::RectangleShape conn({cellSize - pathSize, pathSize});
-          conn.setPosition({px + pathOffset + pathSize, py + pathOffset});
-          conn.setFillColor(sf::Color{255, 0, 255});
-          window.draw(conn);
-        }
-        // South connection (with wall check)
-        if (y + 1 < h && hasFlag(grid.getCell(x, y + 1), CellFlags::InPath) &&
-            grid.canMove({x, y}, Direction::South)) {
-          sf::RectangleShape conn({pathSize, cellSize - pathSize});
-          conn.setPosition({px + pathOffset, py + pathOffset + pathSize});
-          conn.setFillColor(sf::Color{255, 0, 255});
-          window.draw(conn);
-        }
-      }
+      // Path is rendered via cell color, not overlay
     }
   }
 }
