@@ -351,7 +351,7 @@ void UIPanel::renderTerrainBanner(sf::RenderWindow &window) {
   window.draw(bg);
 
   // Title
-  sf::Text title(*m_font, "TERRAIN MODE: Weighted Pathfinding Active", 16);
+  sf::Text title(*m_font, "TERRAIN MODE ACTIVE", 16);
   title.setPosition({x + 15.0f, y + 8.0f});
   title.setFillColor(m_terrainColor);
   window.draw(title);
@@ -359,10 +359,10 @@ void UIPanel::renderTerrainBanner(sf::RenderWindow &window) {
   // Subtitle with path cost if available
   std::stringstream ss;
   if (m_pathCost > 0) {
-    ss << "A*/Dijkstra uses terrain costs | Path Cost: " << std::fixed
+    ss << "Use Dijkstra/A* for weights | Path Cost: " << std::fixed
        << std::setprecision(1) << m_pathCost;
   } else {
-    ss << "A*/Dijkstra algorithms use terrain costs for pathfinding";
+    ss << "Weights: Grass(1), Water(5), Sand(10) | Use Dijkstra/A*";
   }
   sf::Text subtitle(*m_font, ss.str(), 12);
   subtitle.setPosition({x + 15.0f, y + 28.0f});

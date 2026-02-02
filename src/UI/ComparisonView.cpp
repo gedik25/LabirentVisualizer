@@ -634,57 +634,81 @@ void ComparisonView::renderStatsPanel(sf::RenderWindow &window) {
   if (!m_fontLoaded)
     return;
 
-  // Position: Left side, below STATUS panel (~20, 200)
-  float x = 20.0f;
-  float y = 200.0f;
-  float panelWidth = 160.0f;
-  float panelHeight = 30.0f + m_algorithmCount * 25.0f;
+  float panelWidth = 220.0f;
+  float x = 20.0f;  // Padding from left
+  float y = 230.0f; // Start below main status panel
 
-  // Background
-  sf::RectangleShape bg({panelWidth, panelHeight});
-  bg.setPosition({x, y});
-  bg.setFillColor(sf::Color{20, 20, 20, 230});
-  bg.setOutlineColor(sf::Color{60, 60, 60});
-  bg.setOutlineThickness(1.0f);
-  window.draw(bg);
+  // Title
+  renderText(window, "RESULTS", x, y, sf::Color{255, 214, 0}, 16);
+  y += 25.0f;
 
-  // Header
-  renderText(window, "RESULTS", x + 5, y + 3, sf::Color{255, 214, 0}, 14);
-  renderText(window, "Visited", x + 60, y + 3, sf::Color{128, 128, 128}, 10);
-  renderText(window, "Path", x + 100, y + 3, sf::Color{128, 128, 128}, 10);
-  renderText(window, "Time", x + 130, y + 3, sf::Color{128, 128, 128}, 10);
+  for (int i = 0; i < m_algorithmCount; ++i) {
+    if (i >= static_cast<int>(m_solvers.size()))
+      break;
 
-  // Rows for each algorithm
-  float rowY = y + 25;
-  for (int i = 0;
-       i < m_algorithmCount && i < static_cast<int>(m_solvers.size()); ++i) {
-    const auto &solver = m_solvers[i];
+    auto *solver = m_solvers[i].get();
     if (!solver)
       continue;
 
-    sf::Color color = s_slotColors[i % 4];
-    std::string name = getAlgorithmName(m_selectedAlgorithms[i]);
-
-    // Truncate name if too long
-    if (name.length() > 8) {
-      name = name.substr(0, 6) + "..";
-    }
+    // Skip if not running or done? No, show always.
 
     auto stats = solver->getStats();
+    sf::Color color = s_slotColors[i % 4];
 
-    renderText(window, name, x + 5, rowY, color, 11);
-    renderText(window, std::to_string(stats.nodesVisited), x + 60, rowY,
-               sf::Color::White, 11);
+    // Card Background
+    float cardHeight = 135.0f; // Increased for extra details
+    sf::RectangleShape card({panelWidth, cardHeight});
+    card.setPosition({x, y});
+    card.setFillColor(sf::Color{30, 30, 30, 240});
+    card.setOutlineColor(color);
+    card.setOutlineThickness(1.0f);
+    window.draw(card);
 
-    std::string pathStr =
-        solver->foundPath() ? std::to_string(stats.pathLength) : "-";
-    renderText(window, pathStr, x + 100, rowY, sf::Color::White, 11);
+    // Content
+    float tx = x + 10.0f;
+    float ty = y + 8.0f;
+    float lh = 20.0f;
 
-    std::ostringstream ss;
-    ss << std::fixed << std::setprecision(1) << stats.elapsedTime;
-    renderText(window, ss.str(), x + 130, rowY, sf::Color::White, 11);
+    // Name
+    std::string name = getAlgorithmName(m_selectedAlgorithms[i]);
+    // Abbreviate common long names?
+    if (name == "Breadth-First Search")
+      name = "BFS";
+    else if (name == "Depth-First Search")
+      name = "DFS";
+    else if (name == "Bidirectional BFS")
+      name = "Bi-BFS";
+    else if (name == "Greedy Best-First")
+      name = "Greedy";
 
-    rowY += 22;
+    renderText(window, name, tx, ty, color, 15);
+    ty += 24.0f;
+
+    // Stats Rows
+    auto drawStat = [&](const std::string &label, const std::string &val,
+                        const sf::Color &valColor) {
+      renderText(window, label, tx, ty, sf::Color::White, 13);
+      renderText(window, val, tx + 70.0f, ty, valColor, 13);
+      ty += lh;
+    };
+
+    std::stringstream ss;
+    ss << stats.nodesVisited;
+    drawStat("Visited:", ss.str(), sf::Color{0, 255, 255}); // Cyan
+
+    ss.str("");
+    ss << stats.nodesInQueue;
+    drawStat("Queue:", ss.str(), sf::Color{0, 255, 255});
+
+    ss.str("");
+    ss << (solver->foundPath() ? std::to_string(stats.pathLength) : "-");
+    drawStat("Path:", ss.str(), sf::Color{0, 255, 255});
+
+    ss.str("");
+    ss << std::fixed << std::setprecision(1) << stats.elapsedTime << " ms";
+    drawStat("Time:", ss.str(), sf::Color{0, 255, 255});
+
+    y += cardHeight + 12.0f;
   }
 }
 
