@@ -192,8 +192,8 @@ void UIPanel::renderStatsPanel(sf::RenderWindow& window) {
 void UIPanel::renderHelpPanel(sf::RenderWindow& window) {
     sf::Vector2u windowSize = window.getSize();
     
-    float panelWidth = 220.0f;
-    float panelHeight = 340.0f;
+    float panelWidth = 280.0f;
+    float panelHeight = 580.0f;
     float x = windowSize.x - panelWidth - m_padding;
     float y = m_padding;
     
@@ -203,34 +203,92 @@ void UIPanel::renderHelpPanel(sf::RenderWindow& window) {
     // Content
     float textX = x + m_padding;
     float textY = y + m_padding;
+    float keyWidth = 70.0f;
     
     // Title
     renderText(window, "CONTROLS", textX, textY, m_headerColor);
-    textY += m_lineHeight + 8;
+    textY += m_lineHeight + 10;
     
-    // Control list
-    std::vector<std::pair<std::string, std::string>> controls = {
+    // --- Generation ---
+    renderText(window, "-- Generation --", textX, textY, sf::Color(100, 100, 100));
+    textY += m_lineHeight;
+    
+    std::vector<std::pair<std::string, std::string>> genControls = {
         {"G", "Generate (animated)"},
         {"Enter", "Generate (instant)"},
-        {"B", "Solve with BFS"},
-        {"D", "Solve with DFS"},
+        {"Shift+1", "Recursive Backtrack"},
+        {"Shift+2", "Prim's Algorithm"},
+        {"Shift+3", "Kruskal's Algorithm"},
+        {"Shift+4", "Binary Tree"},
+        {"Shift+5", "Eller's Algorithm"}
+    };
+    
+    for (const auto& [key, desc] : genControls) {
+        renderText(window, key, textX, textY, m_highlightColor);
+        renderText(window, desc, textX + keyWidth, textY, m_textColor);
+        textY += m_lineHeight;
+    }
+    
+    textY += 5;
+    
+    // --- Pathfinding ---
+    renderText(window, "-- Pathfinding --", textX, textY, sf::Color(100, 100, 100));
+    textY += m_lineHeight;
+    
+    std::vector<std::pair<std::string, std::string>> solveControls = {
+        {"B", "BFS (Breadth-First)"},
+        {"D", "DFS (Depth-First)"},
+        {"A", "A* (A-Star)"},
+        {"J", "Dijkstra"},
+        {"Y", "Greedy Best-First"},
+        {"I", "Bidirectional BFS"}
+    };
+    
+    for (const auto& [key, desc] : solveControls) {
+        renderText(window, key, textX, textY, m_highlightColor);
+        renderText(window, desc, textX + keyWidth, textY, m_textColor);
+        textY += m_lineHeight;
+    }
+    
+    textY += 5;
+    
+    // --- Options ---
+    renderText(window, "-- Options --", textX, textY, sf::Color(100, 100, 100));
+    textY += m_lineHeight;
+    
+    std::vector<std::pair<std::string, std::string>> optControls = {
+        {"T", "Toggle terrain"},
+        {"M", "Open menu"},
         {"Space", "Toggle animation"},
-        {"R", "Reset solution"},
-        {"C", "Clear all"},
         {"+/-", "Adjust speed"},
+        {"1/2/3", "Size: 25/100/500"}
+    };
+    
+    for (const auto& [key, desc] : optControls) {
+        renderText(window, key, textX, textY, m_highlightColor);
+        renderText(window, desc, textX + keyWidth, textY, m_textColor);
+        textY += m_lineHeight;
+    }
+    
+    textY += 5;
+    
+    // --- Navigation ---
+    renderText(window, "-- Navigation --", textX, textY, sf::Color(100, 100, 100));
+    textY += m_lineHeight;
+    
+    std::vector<std::pair<std::string, std::string>> navControls = {
         {"WASD", "Pan camera"},
         {"Scroll", "Zoom in/out"},
         {"F", "Fit to window"},
-        {"1/2/3", "Grid size preset"},
-        {"H", "Toggle this help"},
+        {"R", "Reset solution"},
+        {"C", "Clear all"},
+        {"H", "Toggle help"},
         {"ESC", "Exit"}
     };
     
-    for (const auto& [key, desc] : controls) {
-        // Key in highlight color
+    for (const auto& [key, desc] : navControls) {
         renderText(window, key, textX, textY, m_highlightColor);
-        // Description in white
-        renderText(window, desc, textX + 60.0f, textY, m_textColor);
+        renderText(window, desc, textX + keyWidth, textY, m_textColor);
         textY += m_lineHeight;
     }
 }
