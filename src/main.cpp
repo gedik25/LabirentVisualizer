@@ -538,6 +538,12 @@ int main() {
         case sf::Keyboard::Key::Escape:
           if (menu.isVisible()) {
             menu.hide();
+          } else if (comparisonView.isVisible()) {
+            comparisonView.handleInput(sf::Keyboard::Key::Escape);
+            if (!comparisonView.isVisible()) {
+              state = AppState::Idle;
+              std::cout << "\nComparison mode closed." << std::endl;
+            }
           } else {
             window.close();
           }
