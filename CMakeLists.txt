@@ -37,6 +37,7 @@ set(SOURCES
     src/Visualization/Renderer.cpp
     src/Visualization/UIPanel.cpp
     src/UI/MenuSystem.cpp
+    src/UI/ComparisonView.cpp
 )
 
 # Header files (for IDE support)
@@ -63,6 +64,8 @@ set(HEADERS
     src/Visualization/Renderer.hpp
     src/Visualization/UIPanel.hpp
     src/UI/MenuSystem.hpp
+    src/UI/ComparisonView.hpp
+    src/Core/SeedManager.hpp
 )
 
 # Create executable
