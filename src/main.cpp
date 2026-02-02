@@ -4,14 +4,37 @@
 #include <chrono>
 #include <thread>
 
+// Core
 #include "Core/Grid.hpp"
 #include "Core/Maze.hpp"
+#include "Core/Terrain.hpp"
+#include "Core/DifficultySettings.hpp"
+#include "Core/SeedManager.hpp"
+
+// Algorithms - Solvers
 #include "Algorithms/BFSSolver.hpp"
 #include "Algorithms/DFSSolver.hpp"
+#include "Algorithms/AStarSolver.hpp"
+#include "Algorithms/DijkstraSolver.hpp"
+#include "Algorithms/GreedySolver.hpp"
+#include "Algorithms/BidirectionalBFS.hpp"
+
+// Generators
+#include "Generators/IMazeGenerator.hpp"
+#include "Generators/PrimGenerator.hpp"
+#include "Generators/KruskalGenerator.hpp"
+#include "Generators/BinaryTreeGenerator.hpp"
+#include "Generators/EllersGenerator.hpp"
+
+// Visualization
 #include "Visualization/Camera.hpp"
 #include "Visualization/Renderer.hpp"
 #include "Visualization/Theme.hpp"
 #include "Visualization/UIPanel.hpp"
+
+// UI
+#include "UI/MenuSystem.hpp"
+#include "UI/ComparisonView.hpp"
 
 using namespace maze;
 
@@ -20,7 +43,27 @@ enum class AppState {
     Idle,           // Waiting for user input
     Generating,     // Generating maze
     Solving,        // Running pathfinding
-    Finished        // Solution found/not found
+    Finished,       // Solution found/not found
+    Comparing       // Comparison mode active
+};
+
+// Generator type enum
+enum class GeneratorType {
+    RecursiveBacktracking = 0,
+    Prim,
+    Kruskal,
+    BinaryTree,
+    Ellers
+};
+
+// Solver type enum
+enum class SolverType {
+    BFS = 0,
+    DFS,
+    AStar,
+    Dijkstra,
+    Greedy,
+    Bidirectional
 };
 
 // Configuration
@@ -29,6 +72,10 @@ struct Config {
     int gridHeight = 25;
     int animationDelay = 10;  // milliseconds between steps
     bool animationEnabled = true;
+    int difficulty = 3;  // 1-5
+    GeneratorType generatorType = GeneratorType::RecursiveBacktracking;
+    SolverType solverType = SolverType::BFS;
+    bool terrainEnabled = false;
     
     // Preset sizes
     static constexpr int PresetSmall = 25;
@@ -43,30 +90,43 @@ struct Config {
 
 void printHelp() {
     std::cout << "\n=== Maze Visualizer Controls ===\n"
+              << "M        - Open/Close Menu\n"
               << "G        - Generate new maze (animated)\n"
               << "Enter    - Generate new maze (instant)\n"
-              << "B        - Solve with BFS (Breadth-First Search)\n"
-              << "D        - Solve with DFS (Depth-First Search)\n"
               << "Space    - Toggle animation ON/OFF\n"
-              << "R        - Reset (clear solution, keep maze)\n"
-              << "C        - Clear all (reset to empty grid)\n"
+              << "T        - Toggle terrain ON/OFF\n"
+              << "\n--- Pathfinding Algorithms ---\n"
+              << "B        - BFS (Breadth-First Search)\n"
+              << "D        - DFS (Depth-First Search)\n"
+              << "A        - A* (A-Star)\n"
+              << "J        - Dijkstra\n"
+              << "Y        - Greedy Best-First\n"
+              << "I        - Bidirectional BFS\n"
+              << "\n--- Maze Generators ---\n"
+              << "Shift+1  - Recursive Backtracking\n"
+              << "Shift+2  - Prim's Algorithm\n"
+              << "Shift+3  - Kruskal's Algorithm\n"
+              << "Shift+4  - Binary Tree\n"
+              << "Shift+5  - Eller's Algorithm\n"
+              << "\n--- Other ---\n"
+              << "R        - Reset (clear solution)\n"
+              << "C        - Clear all\n"
               << "+/-      - Adjust animation speed\n"
               << "WASD     - Pan camera\n"
               << "Scroll   - Zoom in/out\n"
               << "F        - Fit maze to window\n"
-              << "1        - Small maze (25x25)\n"
-              << "2        - Medium maze (100x100)\n"
-              << "3        - Large maze (500x500)\n"
+              << "1/2/3    - Size presets\n"
               << "H        - Toggle help panel\n"
               << "ESC      - Exit\n"
               << "================================\n\n";
 }
 
 void printStatus(AppState state, const Config& config, ISolver* solver = nullptr) {
-    std::cout << "\r";  // Return to start of line
+    std::cout << "\r";
     std::cout << "[" << config.gridWidth << "x" << config.gridHeight << "] ";
     std::cout << "Anim: " << (config.animationEnabled ? "ON " : "OFF") << " | ";
     std::cout << "Delay: " << config.animationDelay << "ms | ";
+    std::cout << "Terrain: " << (config.terrainEnabled ? "ON " : "OFF") << " | ";
     
     switch (state) {
         case AppState::Idle:
@@ -94,16 +154,41 @@ void printStatus(AppState state, const Config& config, ISolver* solver = nullptr
                 }
             }
             break;
+        case AppState::Comparing:
+            std::cout << "Comparison mode active                  ";
+            break;
     }
     std::cout << std::flush;
 }
 
+std::string getGeneratorName(GeneratorType type) {
+    switch (type) {
+        case GeneratorType::RecursiveBacktracking: return "Recursive Backtracking";
+        case GeneratorType::Prim: return "Prim's Algorithm";
+        case GeneratorType::Kruskal: return "Kruskal's Algorithm";
+        case GeneratorType::BinaryTree: return "Binary Tree";
+        case GeneratorType::Ellers: return "Eller's Algorithm";
+    }
+    return "Unknown";
+}
+
+std::string getSolverName(SolverType type) {
+    switch (type) {
+        case SolverType::BFS: return "BFS";
+        case SolverType::DFS: return "DFS";
+        case SolverType::AStar: return "A*";
+        case SolverType::Dijkstra: return "Dijkstra";
+        case SolverType::Greedy: return "Greedy";
+        case SolverType::Bidirectional: return "Bidirectional BFS";
+    }
+    return "Unknown";
+}
+
 int main() {
-    // Print help at startup
     printHelp();
     
-    // Configuration
     Config config;
+    SeedManager seedManager;
     
     // Create window
     const unsigned int windowWidth = 1200;
@@ -118,7 +203,14 @@ int main() {
     
     // Initialize components
     auto grid = std::make_shared<Grid>(config.gridWidth, config.gridHeight);
-    auto mazeGen = std::make_unique<Maze>(grid);
+    auto legacyMazeGen = std::make_unique<Maze>(grid);
+    
+    // New generators
+    std::unique_ptr<IMazeGenerator> currentGenerator;
+    auto primGen = std::make_unique<PrimGenerator>();
+    auto kruskalGen = std::make_unique<KruskalGenerator>();
+    auto binaryGen = std::make_unique<BinaryTreeGenerator>();
+    auto ellersGen = std::make_unique<EllersGenerator>();
     
     Camera camera(static_cast<float>(windowWidth), static_cast<float>(windowHeight));
     Renderer renderer(window, camera);
@@ -135,14 +227,152 @@ int main() {
     uiPanel.setAnimationEnabled(config.animationEnabled);
     uiPanel.setAnimationDelay(config.animationDelay);
     
+    // Menu System
+    MenuSystem menu;
+    menu.init(window);
+    
+    // Comparison View
+    ComparisonView comparisonView;
+    comparisonView.init(window);
+    
     // Solvers
     ISolver* currentSolver = nullptr;
     auto bfsSolver = std::make_unique<BFSSolver>(grid);
     auto dfsSolver = std::make_unique<DFSSolver>(grid);
+    auto astarSolver = std::make_unique<AStarSolver>(grid);
+    auto dijkstraSolver = std::make_unique<DijkstraSolver>(grid);
+    auto greedySolver = std::make_unique<GreedySolver>(grid);
+    auto bidirSolver = std::make_unique<BidirectionalBFS>(grid);
     
     // State
     AppState state = AppState::Idle;
     sf::Clock animationClock;
+    bool mazeGenerated = false;
+    
+    // Lambda to select solver
+    auto selectSolver = [&](SolverType type) -> ISolver* {
+        config.solverType = type;
+        switch (type) {
+            case SolverType::BFS: return bfsSolver.get();
+            case SolverType::DFS: return dfsSolver.get();
+            case SolverType::AStar: return astarSolver.get();
+            case SolverType::Dijkstra: return dijkstraSolver.get();
+            case SolverType::Greedy: return greedySolver.get();
+            case SolverType::Bidirectional: return bidirSolver.get();
+        }
+        return bfsSolver.get();
+    };
+    
+    // Lambda to start solving
+    auto startSolving = [&](SolverType type) {
+        if (!mazeGenerated) {
+            std::cout << "\nGenerate a maze first (press G or Enter)!" << std::endl;
+            return;
+        }
+        grid->clearSolverState();
+        currentSolver = selectSolver(type);
+        currentSolver->init(grid->getStart(), grid->getEnd());
+        state = AppState::Solving;
+        
+        // Set algorithm color
+        switch (type) {
+            case SolverType::BFS:
+            case SolverType::Bidirectional:
+                renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
+                break;
+            case SolverType::DFS:
+                renderer.setAlgorithmType(Theme::AlgorithmType::DFS);
+                break;
+            default:
+                renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
+                break;
+        }
+        
+        std::cout << "\nSolving with " << getSolverName(type) << "..." << std::endl;
+    };
+    
+    // Lambda to start generation with current generator type
+    auto startGeneration = [&](bool instant) {
+        grid->clearSolverState();
+        currentSolver = nullptr;
+        seedManager.generateNewSeed();
+        unsigned int seed = seedManager.getSeed();
+        
+        switch (config.generatorType) {
+            case GeneratorType::RecursiveBacktracking:
+                legacyMazeGen->startGeneration({0, 0});
+                if (instant) {
+                    legacyMazeGen->generateFull();
+                    mazeGenerated = true;
+                    state = AppState::Idle;
+                } else {
+                    state = AppState::Generating;
+                }
+                break;
+                
+            case GeneratorType::Prim:
+                primGen->init(grid, seed);
+                if (instant) {
+                    primGen->generateFull();
+                    mazeGenerated = true;
+                    state = AppState::Idle;
+                } else {
+                    currentGenerator = std::move(primGen);
+                    primGen = std::make_unique<PrimGenerator>();
+                    state = AppState::Generating;
+                }
+                break;
+                
+            case GeneratorType::Kruskal:
+                kruskalGen->init(grid, seed);
+                if (instant) {
+                    kruskalGen->generateFull();
+                    mazeGenerated = true;
+                    state = AppState::Idle;
+                } else {
+                    currentGenerator = std::move(kruskalGen);
+                    kruskalGen = std::make_unique<KruskalGenerator>();
+                    state = AppState::Generating;
+                }
+                break;
+                
+            case GeneratorType::BinaryTree:
+                binaryGen->init(grid, seed);
+                if (instant) {
+                    binaryGen->generateFull();
+                    mazeGenerated = true;
+                    state = AppState::Idle;
+                } else {
+                    currentGenerator = std::move(binaryGen);
+                    binaryGen = std::make_unique<BinaryTreeGenerator>();
+                    state = AppState::Generating;
+                }
+                break;
+                
+            case GeneratorType::Ellers:
+                ellersGen->init(grid, seed);
+                if (instant) {
+                    ellersGen->generateFull();
+                    mazeGenerated = true;
+                    state = AppState::Idle;
+                } else {
+                    currentGenerator = std::move(ellersGen);
+                    ellersGen = std::make_unique<EllersGenerator>();
+                    state = AppState::Generating;
+                }
+                break;
+        }
+        
+        // Generate terrain if enabled
+        if (config.terrainEnabled && (instant || config.generatorType == GeneratorType::RecursiveBacktracking)) {
+            auto diffSettings = DifficultySettings::fromInt(config.difficulty);
+            grid->generateTerrain(diffSettings.terrainDist, seed + 1);
+        }
+        
+        std::cout << "\n" << (instant ? "Instantly generated" : "Generating") 
+                  << " maze with " << getGeneratorName(config.generatorType)
+                  << " (Seed: " << seedManager.getSeedDisplay() << ")" << std::endl;
+    };
     
     // Lambda to recreate grid with new size
     auto resizeGrid = [&](int width, int height) {
@@ -150,10 +380,23 @@ int main() {
         config.gridHeight = height;
         
         grid = std::make_shared<Grid>(width, height);
-        mazeGen = std::make_unique<Maze>(grid);
+        legacyMazeGen = std::make_unique<Maze>(grid);
+        
+        // Recreate all solvers with new grid
         bfsSolver = std::make_unique<BFSSolver>(grid);
         dfsSolver = std::make_unique<DFSSolver>(grid);
+        astarSolver = std::make_unique<AStarSolver>(grid);
+        dijkstraSolver = std::make_unique<DijkstraSolver>(grid);
+        greedySolver = std::make_unique<GreedySolver>(grid);
+        bidirSolver = std::make_unique<BidirectionalBFS>(grid);
         currentSolver = nullptr;
+        
+        // Reset generators
+        primGen = std::make_unique<PrimGenerator>();
+        kruskalGen = std::make_unique<KruskalGenerator>();
+        binaryGen = std::make_unique<BinaryTreeGenerator>();
+        ellersGen = std::make_unique<EllersGenerator>();
+        currentGenerator.reset();
         
         renderer.setGrid(grid);
         renderer.autoCalculateCellSize();
@@ -169,6 +412,8 @@ int main() {
         uiPanel.setAlgorithmName("");
         
         state = AppState::Idle;
+        mazeGenerated = false;
+        
         std::cout << "\nGrid resized to " << width << "x" << height;
         if (!config.animationEnabled) {
             std::cout << " (animation disabled for performance)";
@@ -180,78 +425,136 @@ int main() {
     
     // Main loop
     while (window.isOpen()) {
-        // Event handling - SFML 3.x style
+        // Event handling
         while (auto event = window.pollEvent()) {
             // Window close
             if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
             
+            // Menu handles input first if visible
+            if (menu.isVisible()) {
+                if (auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+                    if (menu.handleKeyPress(keyPressed->code)) {
+                        continue;
+                    }
+                }
+            }
+            
             // Key pressed
             if (auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+                bool shift = keyPressed->shift;
+                
                 switch (keyPressed->code) {
                     case sf::Keyboard::Key::Escape:
-                        window.close();
+                        if (menu.isVisible()) {
+                            menu.hide();
+                        } else {
+                            window.close();
+                        }
+                        break;
+                        
+                    case sf::Keyboard::Key::M:
+                        menu.toggle();
                         break;
                         
                     case sf::Keyboard::Key::G:
-                        // Generate new maze (animated)
-                        grid->clearSolverState();
-                        mazeGen->startGeneration({0, 0});
-                        currentSolver = nullptr;
-                        state = AppState::Generating;
-                        renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
-                        uiPanel.setAlgorithmName("");
+                        startGeneration(false);  // Animated
                         break;
                         
                     case sf::Keyboard::Key::Enter:
-                        // Generate new maze instantly (no animation)
-                        grid->clearSolverState();
-                        mazeGen->startGeneration({0, 0});
-                        mazeGen->generateFull();
-                        currentSolver = nullptr;
-                        state = AppState::Idle;
-                        renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
-                        uiPanel.setAlgorithmName("");
-                        std::cout << "\nMaze generated instantly!" << std::endl;
+                        startGeneration(true);   // Instant
                         break;
                         
                     case sf::Keyboard::Key::Space:
-                        // Toggle animation
                         config.animationEnabled = !config.animationEnabled;
                         uiPanel.setAnimationEnabled(config.animationEnabled);
                         std::cout << "\nAnimation " << (config.animationEnabled ? "ENABLED" : "DISABLED") << std::endl;
                         break;
                         
+                    case sf::Keyboard::Key::T:
+                        config.terrainEnabled = !config.terrainEnabled;
+                        if (config.terrainEnabled && mazeGenerated) {
+                            auto diffSettings = DifficultySettings::fromInt(config.difficulty);
+                            grid->generateTerrain(diffSettings.terrainDist, seedManager.getSeed() + 1);
+                        } else if (!config.terrainEnabled) {
+                            grid->clearTerrain();
+                        }
+                        std::cout << "\nTerrain " << (config.terrainEnabled ? "ENABLED" : "DISABLED") << std::endl;
+                        break;
+                        
                     case sf::Keyboard::Key::H:
-                        // Toggle help panel
                         uiPanel.toggleHelp();
                         break;
                         
+                    // Solver selection
                     case sf::Keyboard::Key::B:
-                        // Solve with BFS
-                        if (mazeGen->isComplete()) {
-                            grid->clearSolverState();
-                            bfsSolver->init(grid->getStart(), grid->getEnd());
-                            currentSolver = bfsSolver.get();
-                            state = AppState::Solving;
-                            renderer.setAlgorithmType(Theme::AlgorithmType::BFS);
-                        }
+                        startSolving(SolverType::BFS);
                         break;
                         
                     case sf::Keyboard::Key::D:
-                        // Solve with DFS
-                        if (mazeGen->isComplete()) {
-                            grid->clearSolverState();
-                            dfsSolver->init(grid->getStart(), grid->getEnd());
-                            currentSolver = dfsSolver.get();
-                            state = AppState::Solving;
-                            renderer.setAlgorithmType(Theme::AlgorithmType::DFS);
+                        if (!shift) startSolving(SolverType::DFS);
+                        break;
+                        
+                    case sf::Keyboard::Key::A:
+                        if (!shift) startSolving(SolverType::AStar);
+                        break;
+                        
+                    case sf::Keyboard::Key::J:
+                        startSolving(SolverType::Dijkstra);
+                        break;
+                        
+                    case sf::Keyboard::Key::Y:
+                        startSolving(SolverType::Greedy);
+                        break;
+                        
+                    case sf::Keyboard::Key::I:
+                        startSolving(SolverType::Bidirectional);
+                        break;
+                        
+                    // Generator selection with Shift
+                    case sf::Keyboard::Key::Num1:
+                        if (shift) {
+                            config.generatorType = GeneratorType::RecursiveBacktracking;
+                            std::cout << "\nGenerator: Recursive Backtracking" << std::endl;
+                        } else {
+                            resizeGrid(Config::PresetSmall, Config::PresetSmall);
+                        }
+                        break;
+                        
+                    case sf::Keyboard::Key::Num2:
+                        if (shift) {
+                            config.generatorType = GeneratorType::Prim;
+                            std::cout << "\nGenerator: Prim's Algorithm" << std::endl;
+                        } else {
+                            resizeGrid(Config::PresetMedium, Config::PresetMedium);
+                        }
+                        break;
+                        
+                    case sf::Keyboard::Key::Num3:
+                        if (shift) {
+                            config.generatorType = GeneratorType::Kruskal;
+                            std::cout << "\nGenerator: Kruskal's Algorithm" << std::endl;
+                        } else {
+                            resizeGrid(Config::PresetLarge, Config::PresetLarge);
+                        }
+                        break;
+                        
+                    case sf::Keyboard::Key::Num4:
+                        if (shift) {
+                            config.generatorType = GeneratorType::BinaryTree;
+                            std::cout << "\nGenerator: Binary Tree" << std::endl;
+                        }
+                        break;
+                        
+                    case sf::Keyboard::Key::Num5:
+                        if (shift) {
+                            config.generatorType = GeneratorType::Ellers;
+                            std::cout << "\nGenerator: Eller's Algorithm" << std::endl;
                         }
                         break;
                         
                     case sf::Keyboard::Key::R:
-                        // Reset solution only
                         grid->clearSolverState();
                         if (currentSolver) {
                             currentSolver->reset();
@@ -262,64 +565,52 @@ int main() {
                         break;
                         
                     case sf::Keyboard::Key::C:
-                        // Clear everything
                         grid->reset();
-                        mazeGen->reset();
+                        grid->clearTerrain();
+                        legacyMazeGen->reset();
                         if (currentSolver) {
                             currentSolver->reset();
                         }
                         currentSolver = nullptr;
+                        currentGenerator.reset();
                         state = AppState::Idle;
+                        mazeGenerated = false;
                         uiPanel.setAlgorithmName("");
                         break;
                         
                     case sf::Keyboard::Key::F:
-                        // Fit to window
                         camera.fitToMaze(grid->getWidth(), grid->getHeight(), 
                                         renderer.getCellSize());
                         break;
                         
-                    case sf::Keyboard::Key::Num1:
-                        resizeGrid(Config::PresetSmall, Config::PresetSmall);
-                        break;
-                        
-                    case sf::Keyboard::Key::Num2:
-                        resizeGrid(Config::PresetMedium, Config::PresetMedium);
-                        break;
-                        
-                    case sf::Keyboard::Key::Num3:
-                        resizeGrid(Config::PresetLarge, Config::PresetLarge);
-                        break;
-                        
-                    case sf::Keyboard::Key::Equal:  // + key
+                    case sf::Keyboard::Key::Equal:
                     case sf::Keyboard::Key::Add:
                         config.animationDelay = std::max(Config::MinDelay, 
                                                          config.animationDelay - 5);
                         uiPanel.setAnimationDelay(config.animationDelay);
                         break;
                         
-                    case sf::Keyboard::Key::Hyphen:  // - key
+                    case sf::Keyboard::Key::Hyphen:
                     case sf::Keyboard::Key::Subtract:
                         config.animationDelay = std::min(Config::MaxDelay, 
                                                          config.animationDelay + 5);
                         uiPanel.setAnimationDelay(config.animationDelay);
                         break;
                         
-                    // Camera pan
+                    // Camera pan (only when menu not visible)
                     case sf::Keyboard::Key::W:
                     case sf::Keyboard::Key::Up:
-                        camera.pan(0, -1);
+                        if (!menu.isVisible()) camera.pan(0, -1);
                         break;
                     case sf::Keyboard::Key::S:
                     case sf::Keyboard::Key::Down:
-                        camera.pan(0, 1);
+                        if (!menu.isVisible()) camera.pan(0, 1);
                         break;
-                    case sf::Keyboard::Key::A:
                     case sf::Keyboard::Key::Left:
-                        camera.pan(-1, 0);
+                        if (!menu.isVisible()) camera.pan(-1, 0);
                         break;
                     case sf::Keyboard::Key::Right:
-                        camera.pan(1, 0);
+                        if (!menu.isVisible()) camera.pan(1, 0);
                         break;
                         
                     default:
@@ -354,12 +645,45 @@ int main() {
             switch (state) {
                 case AppState::Generating:
                     if (config.animationEnabled) {
-                        if (!mazeGen->step()) {
+                        bool generating = false;
+                        
+                        if (config.generatorType == GeneratorType::RecursiveBacktracking) {
+                            generating = legacyMazeGen->step();
+                            if (!generating) {
+                                mazeGenerated = true;
+                                if (config.terrainEnabled) {
+                                    auto diffSettings = DifficultySettings::fromInt(config.difficulty);
+                                    grid->generateTerrain(diffSettings.terrainDist, seedManager.getSeed() + 1);
+                                }
+                            }
+                        } else if (currentGenerator) {
+                            generating = currentGenerator->step();
+                            if (!generating) {
+                                mazeGenerated = true;
+                                if (config.terrainEnabled) {
+                                    auto diffSettings = DifficultySettings::fromInt(config.difficulty);
+                                    grid->generateTerrain(diffSettings.terrainDist, seedManager.getSeed() + 1);
+                                }
+                                currentGenerator.reset();
+                            }
+                        }
+                        
+                        if (!generating) {
                             state = AppState::Idle;
                         }
                     } else {
-                        // Generate full maze at once for large mazes
-                        mazeGen->generateFull();
+                        // Generate full maze at once
+                        if (config.generatorType == GeneratorType::RecursiveBacktracking) {
+                            legacyMazeGen->generateFull();
+                        } else if (currentGenerator) {
+                            currentGenerator->generateFull();
+                            currentGenerator.reset();
+                        }
+                        mazeGenerated = true;
+                        if (config.terrainEnabled) {
+                            auto diffSettings = DifficultySettings::fromInt(config.difficulty);
+                            grid->generateTerrain(diffSettings.terrainDist, seedManager.getSeed() + 1);
+                        }
                         state = AppState::Idle;
                     }
                     break;
@@ -371,7 +695,6 @@ int main() {
                                 state = AppState::Finished;
                             }
                         } else {
-                            // Solve at once for large mazes
                             currentSolver->solve();
                             state = AppState::Finished;
                         }
@@ -388,7 +711,7 @@ int main() {
         // Update UI panel
         switch (state) {
             case AppState::Idle:
-                uiPanel.setState("Idle");
+                uiPanel.setState(mazeGenerated ? "Ready" : "Generate maze (G)");
                 break;
             case AppState::Generating:
                 uiPanel.setState("Generating...");
@@ -398,6 +721,9 @@ int main() {
                 break;
             case AppState::Finished:
                 uiPanel.setState(currentSolver && currentSolver->foundPath() ? "Path Found!" : "No Path");
+                break;
+            case AppState::Comparing:
+                uiPanel.setState("Comparing...");
                 break;
         }
         
@@ -417,7 +743,14 @@ int main() {
         // Render
         renderer.clear();
         renderer.render();
+        
+        // Render terrain colors if enabled
+        if (config.terrainEnabled) {
+            renderer.renderTerrain();
+        }
+        
         uiPanel.render(window);
+        menu.render(window);
         renderer.display();
     }
     

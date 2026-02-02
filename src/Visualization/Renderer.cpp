@@ -179,6 +179,44 @@ sf::Color Renderer::getCellColor(int x, int y) const {
     return theme.cellEmpty;
 }
 
+void Renderer::renderTerrain() {
+    if (!m_grid) return;
+    
+    // Get visible cell range
+    Camera::CellRange range = m_camera.getVisibleCells(
+        m_cellSize, m_grid->getWidth(), m_grid->getHeight()
+    );
+    
+    // Render terrain as semi-transparent overlay
+    for (int y = range.minY; y <= range.maxY; ++y) {
+        for (int x = range.minX; x <= range.maxX; ++x) {
+            TerrainType terrain = m_grid->getTerrain(x, y);
+            
+            // Skip normal terrain (no overlay needed)
+            if (terrain == TerrainType::Normal) continue;
+            
+            // Don't overlay on visited/path cells
+            uint8_t cell = m_grid->getCell(x, y);
+            if (hasFlag(cell, CellFlags::InPath) || 
+                hasFlag(cell, CellFlags::Visited) ||
+                hasFlag(cell, CellFlags::Current)) {
+                continue;
+            }
+            
+            float px = x * m_cellSize;
+            float py = y * m_cellSize;
+            
+            sf::Color terrainColor = getTerrainColor(terrain);
+            terrainColor.a = 180;  // Semi-transparent
+            
+            m_cellShape.setSize({m_cellSize - m_wallThickness, m_cellSize - m_wallThickness});
+            m_cellShape.setPosition({px + m_wallThickness / 2, py + m_wallThickness / 2});
+            m_cellShape.setFillColor(terrainColor);
+            m_window.draw(m_cellShape);
+        }
+    }
+}
+
 void Renderer::renderUI(const std::string& status, int animationDelay) {
     // Reset view to default for UI rendering
     m_window.setView(m_window.getDefaultView());

@@ -3,6 +3,7 @@
 #include "Camera.hpp"
 #include "Theme.hpp"
 #include "../Core/Grid.hpp"
+#include "../Core/Terrain.hpp"
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/CircleShape.hpp>
@@ -46,6 +47,9 @@ public:
     
     // Set algorithm type for coloring
     void setAlgorithmType(Theme::AlgorithmType type) { m_algorithmType = type; }
+    
+    // Render terrain colors
+    void renderTerrain();
     
     // Render statistics
     struct RenderStats {
