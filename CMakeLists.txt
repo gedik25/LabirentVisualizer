@@ -29,6 +29,10 @@ set(SOURCES
     src/Algorithms/DijkstraSolver.cpp
     src/Algorithms/GreedySolver.cpp
     src/Algorithms/BidirectionalBFS.cpp
+    src/Generators/PrimGenerator.cpp
+    src/Generators/KruskalGenerator.cpp
+    src/Generators/BinaryTreeGenerator.cpp
+    src/Generators/EllersGenerator.cpp
     src/Visualization/Camera.cpp
     src/Visualization/Renderer.cpp
     src/Visualization/UIPanel.cpp
@@ -46,6 +50,11 @@ set(HEADERS
     src/Algorithms/DijkstraSolver.hpp
     src/Algorithms/GreedySolver.hpp
     src/Algorithms/BidirectionalBFS.hpp
+    src/Generators/IMazeGenerator.hpp
+    src/Generators/PrimGenerator.hpp
+    src/Generators/KruskalGenerator.hpp
+    src/Generators/BinaryTreeGenerator.hpp
+    src/Generators/EllersGenerator.hpp
     src/Visualization/Theme.hpp
     src/Visualization/Camera.hpp
     src/Visualization/Renderer.hpp
