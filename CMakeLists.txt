@@ -44,6 +44,8 @@ set(HEADERS
     src/Core/Cell.hpp
     src/Core/Grid.hpp
     src/Core/Maze.hpp
+    src/Core/Terrain.hpp
+    src/Core/DifficultySettings.hpp
     src/Algorithms/ISolver.hpp
     src/Algorithms/BFSSolver.hpp
     src/Algorithms/DFSSolver.hpp
