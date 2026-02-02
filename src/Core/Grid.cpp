@@ -6,6 +6,7 @@ Grid::Grid(int width, int height)
     : m_width(width)
     , m_height(height)
     , m_cells(static_cast<size_t>(width * height), CellFlags::AllWalls)
+    , m_terrain(static_cast<size_t>(width * height), static_cast<uint8_t>(TerrainType::Normal))
     , m_start{0, 0}
     , m_end{width - 1, height - 1}
 {
@@ -168,6 +169,7 @@ std::vector<Position> Grid::getAccessibleNeighbors(const Position& pos) const {
 
 void Grid::reset() {
     std::fill(m_cells.begin(), m_cells.end(), CellFlags::AllWalls);
+    // Don't reset terrain - it should be preserved or explicitly cleared
 }
 
 void Grid::clearSolverState() {
@@ -176,6 +178,121 @@ void Grid::clearSolverState() {
     for (auto& cell : m_cells) {
         cell &= ~solverFlags;
     }
+}
+
+// Terrain methods
+TerrainType Grid::getTerrain(int x, int y) const {
+    if (!isValid(x, y)) {
+        return TerrainType::Normal;
+    }
+    return static_cast<TerrainType>(m_terrain[index(x, y)]);
+}
+
+TerrainType Grid::getTerrain(const Position& pos) const {
+    return getTerrain(pos.x, pos.y);
+}
+
+void Grid::setTerrain(int x, int y, TerrainType type) {
+    if (!isValid(x, y)) return;
+    m_terrain[index(x, y)] = static_cast<uint8_t>(type);
+}
+
+void Grid::setTerrain(const Position& pos, TerrainType type) {
+    setTerrain(pos.x, pos.y, type);
+}
+
+float Grid::getMovementCost(const Position& from, const Position& to) const {
+    // Average cost of both cells
+    float fromCost = getMovementCost(from);
+    float toCost = getMovementCost(to);
+    return (fromCost + toCost) / 2.0f;
+}
+
+float Grid::getMovementCost(const Position& pos) const {
+    return getTerrainCost(getTerrain(pos));
+}
+
+void Grid::generateTerrain(const TerrainDistribution& dist, unsigned int seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> uniform(0.0f, 1.0f);
+    
+    auto probs = dist.toArray();
+    
+    // Calculate cumulative probabilities
+    std::array<float, TERRAIN_COUNT> cumulative;
+    float sum = 0.0f;
+    for (size_t i = 0; i < TERRAIN_COUNT; ++i) {
+        sum += probs[i];
+        cumulative[i] = sum;
+    }
+    
+    // Normalize if needed
+    if (sum > 0.0f) {
+        for (auto& c : cumulative) {
+            c /= sum;
+        }
+    }
+    
+    // Helper to pick terrain type
+    auto pickTerrain = [&]() -> TerrainType {
+        float r = uniform(rng);
+        for (size_t i = 0; i < TERRAIN_COUNT; ++i) {
+            if (r < cumulative[i]) {
+                return static_cast<TerrainType>(i);
+            }
+        }
+        return TerrainType::Normal;
+    };
+    
+    // Generate terrain with clustering
+    std::vector<bool> assigned(m_cells.size(), false);
+    
+    for (int y = 0; y < m_height; ++y) {
+        for (int x = 0; x < m_width; ++x) {
+            size_t idx = index(x, y);
+            if (assigned[idx]) continue;
+            
+            // Pick terrain type
+            TerrainType type = pickTerrain();
+            
+            // Start a cluster
+            std::vector<Position> cluster;
+            cluster.push_back({x, y});
+            m_terrain[idx] = static_cast<uint8_t>(type);
+            assigned[idx] = true;
+            
+            // Grow cluster
+            size_t clusterIdx = 0;
+            while (clusterIdx < cluster.size() && 
+                   static_cast<int>(cluster.size()) < dist.maxClusterSize) {
+                Position pos = cluster[clusterIdx++];
+                
+                // Try to extend to neighbors
+                for (int d = 0; d < 4; ++d) {
+                    Position neighbor = getNeighbor(pos, static_cast<Direction>(d));
+                    if (!isValid(neighbor)) continue;
+                    
+                    size_t nIdx = index(neighbor.x, neighbor.y);
+                    if (assigned[nIdx]) continue;
+                    
+                    // Random chance to extend cluster
+                    if (uniform(rng) < dist.clusterChance) {
+                        m_terrain[nIdx] = static_cast<uint8_t>(type);
+                        assigned[nIdx] = true;
+                        cluster.push_back(neighbor);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Ensure start and end are always normal terrain
+    setTerrain(m_start, TerrainType::Normal);
+    setTerrain(m_end, TerrainType::Normal);
+}
+
+void Grid::clearTerrain() {
+    std::fill(m_terrain.begin(), m_terrain.end(), static_cast<uint8_t>(TerrainType::Normal));
 }
 
 } // namespace maze

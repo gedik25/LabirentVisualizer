@@ -1,14 +1,17 @@
 #pragma once
 
 #include "Cell.hpp"
+#include "Terrain.hpp"
 #include <vector>
 #include <stdexcept>
+#include <random>
 
 namespace maze {
 
 /**
  * Memory-efficient grid storage for maze cells.
  * Uses a flat vector with 1 byte per cell (bit flags for walls and states).
+ * Also stores terrain type for each cell.
  * Supports rectangular grids of any size.
  */
 class Grid {
@@ -67,11 +70,28 @@ public:
     Position getEnd() const { return m_end; }
     void setStart(const Position& pos) { m_start = pos; }
     void setEnd(const Position& pos) { m_end = pos; }
+    
+    // Terrain operations
+    TerrainType getTerrain(int x, int y) const;
+    TerrainType getTerrain(const Position& pos) const;
+    void setTerrain(int x, int y, TerrainType type);
+    void setTerrain(const Position& pos, TerrainType type);
+    
+    // Get movement cost between two adjacent cells
+    float getMovementCost(const Position& from, const Position& to) const;
+    float getMovementCost(const Position& pos) const;
+    
+    // Generate random terrain based on distribution
+    void generateTerrain(const TerrainDistribution& dist, unsigned int seed);
+    
+    // Clear all terrain (set to Normal)
+    void clearTerrain();
 
 private:
     int m_width;
     int m_height;
     std::vector<uint8_t> m_cells;
+    std::vector<uint8_t> m_terrain;  // Terrain type for each cell
     Position m_start;
     Position m_end;
     

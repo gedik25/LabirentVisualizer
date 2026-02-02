@@ -50,11 +50,8 @@ void DijkstraSolver::initDataStructures() {
 }
 
 float DijkstraSolver::getMovementCost(const Position& from, const Position& to) const {
-    // Base cost is 1 for adjacent cells
-    // This will be extended when terrain system is added
-    (void)from;
-    (void)to;
-    return 1.0f;
+    // Use terrain cost from grid
+    return m_grid->getMovementCost(from, to);
 }
 
 bool DijkstraSolver::step() {

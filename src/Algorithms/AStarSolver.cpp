@@ -58,11 +58,8 @@ float AStarSolver::heuristic(const Position& a, const Position& b) const {
 }
 
 float AStarSolver::getMovementCost(const Position& from, const Position& to) const {
-    // Base cost is 1 for adjacent cells
-    // This will be extended when terrain system is added
-    (void)from; // Unused for now
-    (void)to;   // Unused for now
-    return 1.0f;
+    // Use terrain cost from grid
+    return m_grid->getMovementCost(from, to);
 }
 
 bool AStarSolver::step() {
