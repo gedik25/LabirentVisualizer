@@ -7,6 +7,15 @@
 
 namespace maze {
 
+// Application state for context-aware UI
+enum class AppState {
+  Idle,       // Waiting for user input - show all controls
+  Generating, // Generating maze - show generation info only
+  Solving,    // Running pathfinding - show solve stats only
+  Finished,   // Solution found/not found - same as Idle UI
+  Comparing   // Comparison mode - hide help panel
+};
+
 /**
  * UI Panel for displaying status, statistics, and controls.
  * Renders text overlays on the maze visualization.
@@ -49,11 +58,16 @@ public:
   void setVisible(bool visible) { m_visible = visible; }
   bool isVisible() const { return m_visible; }
 
+  // App state for context-aware menu
+  void setAppState(AppState state) { m_appState = state; }
+  AppState getAppState() const { return m_appState; }
+
 private:
   std::optional<sf::Font> m_font;
   bool m_fontLoaded = false;
   bool m_visible = true;
   bool m_showHelp = true;
+  AppState m_appState = AppState::Idle;
 
   // Status info
   int m_gridWidth = 0;

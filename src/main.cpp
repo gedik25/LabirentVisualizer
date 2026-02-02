@@ -38,14 +38,8 @@
 
 using namespace maze;
 
-// Application state
-enum class AppState {
-  Idle,       // Waiting for user input
-  Generating, // Generating maze
-  Solving,    // Running pathfinding
-  Finished,   // Solution found/not found
-  Comparing   // Comparison mode active
-};
+// Use AppState from maze namespace (defined in UIPanel.hpp)
+using AppState = maze::AppState;
 
 // Generator type enum
 enum class GeneratorType {
@@ -913,20 +907,25 @@ int main() {
     switch (state) {
     case AppState::Idle:
       uiPanel.setState(mazeGenerated ? "Ready" : "Generate maze (G)");
+      uiPanel.setAppState(maze::AppState::Idle);
       break;
     case AppState::Generating:
       uiPanel.setState("Generating...");
+      uiPanel.setAppState(maze::AppState::Generating);
       break;
     case AppState::Solving:
       uiPanel.setState("Solving...");
+      uiPanel.setAppState(maze::AppState::Solving);
       break;
     case AppState::Finished:
       uiPanel.setState(currentSolver && currentSolver->foundPath()
                            ? "Path Found!"
                            : "No Path");
+      uiPanel.setAppState(maze::AppState::Idle); // Finished = back to idle UI
       break;
     case AppState::Comparing:
       uiPanel.setState("Comparing...");
+      uiPanel.setAppState(maze::AppState::Comparing);
       break;
     }
 
