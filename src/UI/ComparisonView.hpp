@@ -71,10 +71,15 @@ public:
   ISolver *getSolver(int slot);
 
   // Render the comparison view (menu or split screen)
-  void render(sf::RenderWindow &window);
+  void render(sf::RenderWindow &window, class Camera *camera = nullptr);
 
   // Render results table
   void renderResults(sf::RenderWindow &window);
+
+  // Standalone camera controls for Comparison Mode
+  void zoom(float factor);
+  void pan(float dx, float dy);
+  void fitToMaze();
 
   // Visibility and state
   void show() { m_visible = true; }
@@ -95,6 +100,9 @@ public:
   static int getTotalAlgorithms() { return 6; } // Total available algorithms
 
 private:
+  float m_zoom = 1.0f;
+  sf::Vector2f m_pan = {0.0f, 0.0f};
+
   bool m_visible = false;
   std::optional<sf::Font> m_font;
   bool m_fontLoaded = false;
@@ -126,9 +134,10 @@ private:
   // Render helpers
   void renderMenu(sf::RenderWindow &window);
   void renderViewport(sf::RenderWindow &window, int slot,
-                      const ViewportRect &vp);
+                      const ViewportRect &vp, class Camera *camera);
   void renderMiniGrid(sf::RenderWindow &window, Grid &grid,
-                      const ViewportRect &vp, const sf::Color &visitedColor);
+                      const ViewportRect &vp, const sf::Color &visitedColor,
+                      class Camera *camera);
   void renderText(sf::RenderWindow &window, const std::string &text, float x,
                   float y, const sf::Color &color, unsigned int size = 14);
   void renderStatsPanel(sf::RenderWindow &window);

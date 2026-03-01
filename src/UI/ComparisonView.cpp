@@ -5,6 +5,7 @@
 #include "../Algorithms/DFSSolver.hpp"
 #include "../Algorithms/DijkstraSolver.hpp"
 #include "../Algorithms/GreedySolver.hpp"
+#include "Visualization/Camera.hpp"
 #include <iomanip>
 #include <sstream>
 
@@ -264,6 +265,25 @@ ISolver *ComparisonView::getSolver(int slot) {
   return nullptr;
 }
 
+void ComparisonView::zoom(float factor) {
+  m_zoom *= factor;
+  if (m_zoom > 10.0f)
+    m_zoom = 10.0f;
+  if (m_zoom < 0.1f)
+    m_zoom = 0.1f;
+}
+
+void ComparisonView::fitToMaze() {
+  m_zoom = 1.0f;
+  m_pan = {0.0f, 0.0f};
+}
+
+void ComparisonView::pan(float dx, float dy) {
+  float speed = 20.0f / m_zoom; // Adjusted for zoom level
+  m_pan.x += dx * speed;
+  m_pan.y += dy * speed;
+}
+
 void ComparisonView::calculateViewports(sf::RenderWindow &window) {
   m_viewports.clear();
 
@@ -272,15 +292,14 @@ void ComparisonView::calculateViewports(sf::RenderWindow &window) {
   float h = static_cast<float>(size.y);
 
   // Account for UI panels
-  // STATUS panel on left: ~175px
-  // Stats boxes on left: ~100px
+  // STATUS & RESULTS panel on left: ~200px
   // CONTROLS panel on right: ~260px
-  float leftMargin = 175.0f;  // STATUS panel width
+  float leftMargin = 210.0f;  // STATUS/RESULTS panel width
   float rightMargin = 260.0f; // CONTROLS panel width
   float padding = 15.0f;
 
-  // Scale factor to shrink viewports (0.9 = 10% smaller)
-  float scaleFactor = 0.9f;
+  // Scale factor to shrink viewports slightly so they don't hit edges
+  float scaleFactor = 0.85f;
 
   // Available space for maze viewports
   float availableWidth =
@@ -336,7 +355,7 @@ void ComparisonView::calculateViewports(sf::RenderWindow &window) {
   }
 }
 
-void ComparisonView::render(sf::RenderWindow &window) {
+void ComparisonView::render(sf::RenderWindow &window, class Camera *camera) {
   if (!m_visible)
     return;
 
@@ -356,8 +375,11 @@ void ComparisonView::render(sf::RenderWindow &window) {
     for (int i = 0;
          i < m_algorithmCount && i < static_cast<int>(m_viewports.size());
          ++i) {
-      renderViewport(window, i, m_viewports[i]);
+      renderViewport(window, i, m_viewports[i], camera);
     }
+
+    // Restore view for UI overlay
+    window.setView(window.getDefaultView());
 
     // Render RESULTS panel on left side (always visible, not just when
     // finished)
@@ -429,8 +451,15 @@ void ComparisonView::renderMenu(sf::RenderWindow &window) {
 }
 
 void ComparisonView::renderViewport(sf::RenderWindow &window, int slot,
-                                    const ViewportRect &vp) {
-  // Draw viewport background
+                                    const ViewportRect &vp,
+                                    class Camera *camera) {
+  // CRITICAL FIX: Always start by drawing UI elements in the default window
+  // coordinate space before we potentially switch to a camera viewport. This
+  // prevents 'Z-offset overlap' where the UI draws locally into the previous
+  // algorithm's clipped viewport.
+  window.setView(window.getDefaultView());
+
+  // Draw viewport background and border
   sf::RectangleShape bg({vp.width, vp.height});
   bg.setPosition({vp.x, vp.y});
   bg.setFillColor(sf::Color{30, 30, 30});
@@ -454,93 +483,163 @@ void ComparisonView::renderViewport(sf::RenderWindow &window, int slot,
                sf::Color::White, 12);
   }
 
-  // Render mini grid
+  // Render mini grid with its own camera-controlled view
   if (slot < static_cast<int>(m_grids.size()) && m_grids[slot]) {
     ViewportRect gridVp = {vp.x + 5, vp.y + 30, vp.width - 10, vp.height - 35};
-    renderMiniGrid(window, *m_grids[slot], gridVp, s_slotColors[slot % 4]);
+    renderMiniGrid(window, *m_grids[slot], gridVp, s_slotColors[slot % 4],
+                   camera);
   }
 }
 
 void ComparisonView::renderMiniGrid(sf::RenderWindow &window, Grid &grid,
                                     const ViewportRect &vp,
-                                    const sf::Color &visitedColor) {
+                                    const sf::Color &visitedColor,
+                                    class Camera *camera) {
   int w = grid.getWidth();
   int h = grid.getHeight();
 
-  float cellW = vp.width / w;
-  float cellH = vp.height / h;
-  float cellSize = std::min(cellW, cellH);
+  // Draw as a (2*w+1) x (2*h+1) tilemap
+  int tilesX = w * 2 + 1;
+  int tilesY = h * 2 + 1;
 
-  // Center the grid
-  float offsetX = vp.x + (vp.width - cellSize * w) / 2;
-  float offsetY = vp.y + (vp.height - cellSize * h) / 2;
+  // The base physical size of a tile in our virtual world
+  float tileSize = 10.0f;
 
-  float wallThickness = std::max(1.0f, cellSize * 0.1f);
-  sf::RectangleShape cell({cellSize - 1, cellSize - 1});
-  sf::RectangleShape wallH({cellSize, wallThickness});
-  sf::RectangleShape wallV({wallThickness, cellSize});
+  // Total virtual size of the maze
+  float virtualMazeW = tilesX * tileSize;
+  float virtualMazeH = tilesY * tileSize;
 
-  for (int y = 0; y < h; ++y) {
-    for (int x = 0; x < w; ++x) {
-      float px = offsetX + x * cellSize;
-      float py = offsetY + y * cellSize;
-      cell.setPosition({px, py});
+  // Set SFML Viewport to clip to this grid's rectangle
+  sf::Vector2u winSize = window.getSize();
+  sf::View view;
 
-      uint8_t flags = grid.getCell(x, y);
+  // To avoid stretching, find the aspect ratio of the target viewport
+  float vpRatio = vp.width / vp.height;
+  float mazeRatio = virtualMazeW / virtualMazeH;
 
-      // Determine color based on terrain first
-      TerrainType terrain = grid.getTerrain(x, y);
-      sf::Color color = getTerrainColor(terrain);
+  sf::Vector2f viewSize;
 
-      // Override with solver state colors - InPath has highest priority
-      if (hasFlag(flags, CellFlags::InPath)) {
-        color = sf::Color{255, 0, 255}; // Magenta for path (full cell)
-      } else if (hasFlag(flags, CellFlags::Current)) {
-        color = sf::Color{255, 255, 0}; // Yellow for current
-      } else if (hasFlag(flags, CellFlags::Visited)) {
-        color = visitedColor;
+  // If viewport is wider than maze, fit to height, otherwise fit to width
+  // This guarantees the maze covers the maximum allowed space before adding
+  // dead space padding.
+  if (vpRatio > mazeRatio) {
+    viewSize.y = virtualMazeH;
+    viewSize.x = virtualMazeH * vpRatio;
+  } else {
+    viewSize.x = virtualMazeW;
+    viewSize.y = virtualMazeW / vpRatio;
+  }
+
+  // Apply our dedicated comparison zoom factor
+  viewSize.x /= m_zoom;
+  viewSize.y /= m_zoom;
+
+  view.setSize(viewSize);
+
+  // Center is the middle of the maze adjusted by user panning.
+  // The user prompt specifically requested this dynamic centering logic.
+  sf::Vector2f center((virtualMazeW / 2.0f) - m_pan.x,
+                      (virtualMazeH / 2.0f) - m_pan.y);
+  view.setCenter(center);
+
+  // Set physical viewport rendering bounds
+  view.setViewport(
+      sf::FloatRect({vp.x / winSize.x, vp.y / winSize.y},
+                    {vp.width / winSize.x, vp.height / winSize.y}));
+  window.setView(view);
+
+  sf::RectangleShape tileShape({tileSize, tileSize});
+  sf::Color wallColor = sf::Color::Black; // Walls are black squares
+
+  // Helper lambda to get cell color
+  auto getCellVisualColor = [&](int cx, int cy) -> sf::Color {
+    uint8_t flags = grid.getCell(cx, cy);
+    TerrainType terrain = grid.getTerrain(cx, cy);
+    sf::Color color = getTerrainColor(terrain);
+
+    if (hasFlag(flags, CellFlags::InPath)) {
+      color = sf::Color{255, 0, 255}; // Path magenta
+    } else if (hasFlag(flags, CellFlags::Current)) {
+      color = sf::Color{255, 255, 0}; // Yellow
+    } else if (hasFlag(flags, CellFlags::Visited)) {
+      color = visitedColor;
+    }
+
+    Position pos{cx, cy};
+    if (pos == grid.getStart()) {
+      color = sf::Color{0, 255, 127};
+    } else if (pos == grid.getEnd()) {
+      color = sf::Color{255, 69, 0};
+    }
+    return color;
+  };
+
+  // Helper lambda to get passage color between c1 and c2
+  auto getPassageColor = [&](int c1x, int c1y, int c2x, int c2y) -> sf::Color {
+    uint8_t f1 = grid.getCell(c1x, c1y);
+    uint8_t f2 = grid.getCell(c2x, c2y);
+
+    if (hasFlag(f1, CellFlags::InPath) && hasFlag(f2, CellFlags::InPath))
+      return sf::Color{255, 0, 255};
+    if (hasFlag(f1, CellFlags::Visited) && hasFlag(f2, CellFlags::Visited))
+      return visitedColor;
+
+    // Average or fall back to empty color
+    return sf::Color{40, 40, 40}; // Empty passage
+  };
+
+  for (int ty = 0; ty < tilesY; ++ty) {
+    for (int tx = 0; tx < tilesX; ++tx) {
+      float px = tx * tileSize;
+      float py = ty * tileSize;
+      tileShape.setPosition({px, py});
+
+      bool isWallX = (tx % 2 == 0);
+      bool isWallY = (ty % 2 == 0);
+
+      // Four cases:
+      if (isWallX && isWallY) {
+        // Corner - always wall
+        tileShape.setFillColor(wallColor);
+      } else if (!isWallX && !isWallY) {
+        // Cell
+        int cx = (tx - 1) / 2;
+        int cy = (ty - 1) / 2;
+        tileShape.setFillColor(getCellVisualColor(cx, cy));
+      } else if (isWallX && !isWallY) {
+        // Vertical wall or passage between (cx-1, cy) and (cx, cy)
+        int cx = tx / 2;
+        int cy = (ty - 1) / 2;
+        if (cx == 0 || cx == w) {
+          tileShape.setFillColor(wallColor); // Outer boundary
+        } else {
+          // Check wall flag for cell to the right (cx)
+          if (hasFlag(grid.getCell(cx, cy), CellFlags::WallWest)) {
+            tileShape.setFillColor(wallColor);
+          } else {
+            tileShape.setFillColor(getPassageColor(cx - 1, cy, cx, cy));
+          }
+        }
+      } else if (!isWallX && isWallY) {
+        // Horizontal wall or passage between (cx, cy-1) and (cx, cy)
+        int cx = (tx - 1) / 2;
+        int cy = ty / 2;
+        if (cy == 0 || cy == h) {
+          tileShape.setFillColor(wallColor); // Outer boundary
+        } else {
+          // Check wall flag for cell below (cy)
+          if (hasFlag(grid.getCell(cx, cy), CellFlags::WallNorth)) {
+            tileShape.setFillColor(wallColor);
+          } else {
+            tileShape.setFillColor(getPassageColor(cx, cy - 1, cx, cy));
+          }
+        }
       }
 
-      // Start/end markers
-      Position pos{x, y};
-      if (pos == grid.getStart()) {
-        color = sf::Color{0, 255, 127}; // Green
-      } else if (pos == grid.getEnd()) {
-        color = sf::Color{255, 69, 0}; // Red
-      }
-
-      cell.setFillColor(color);
-      window.draw(cell);
-
-      // Draw walls
-      sf::Color wallColor{200, 200, 200};
-
-      // North wall
-      if (hasFlag(flags, CellFlags::WallNorth)) {
-        wallH.setFillColor(wallColor);
-        wallH.setPosition({px, py});
-        window.draw(wallH);
-      }
-      // West wall
-      if (hasFlag(flags, CellFlags::WallWest)) {
-        wallV.setFillColor(wallColor);
-        wallV.setPosition({px, py});
-        window.draw(wallV);
-      }
-      // South wall (only on bottom edge)
-      if (y == h - 1 && hasFlag(flags, CellFlags::WallSouth)) {
-        wallH.setFillColor(wallColor);
-        wallH.setPosition({px, py + cellSize - wallThickness});
-        window.draw(wallH);
-      }
-      // East wall (only on right edge)
-      if (x == w - 1 && hasFlag(flags, CellFlags::WallEast)) {
-        wallV.setFillColor(wallColor);
-        wallV.setPosition({px + cellSize - wallThickness, py});
-        window.draw(wallV);
-      }
-
-      // Path is rendered via cell color, not overlay
+      // Draw the tile slightly expanded or exactly?
+      // Since float coordinates might cause small gaps, we can add a slight
+      // overlap: tileShape.setSize({tileSize + 0.5f, tileSize + 0.5f});
+      window.draw(tileShape);
     }
   }
 }

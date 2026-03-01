@@ -500,6 +500,9 @@ int main() {
 
   printStatus(state, config);
 
+  bool isDragging = false;
+  sf::Vector2i lastMousePos;
+
   // Main loop
   while (window.isOpen()) {
     // Handle pending size change from menu
@@ -521,6 +524,31 @@ int main() {
           if (menu.handleKeyPress(keyPressed->code)) {
             continue;
           }
+        }
+      }
+
+      // Mouse Drag Handling
+      if (auto *mousePress = event->getIf<sf::Event::MouseButtonPressed>()) {
+        if (mousePress->button == sf::Mouse::Button::Left) {
+          isDragging = true;
+          lastMousePos = {mousePress->position.x, mousePress->position.y};
+        }
+      }
+      if (auto *mouseRelease = event->getIf<sf::Event::MouseButtonReleased>()) {
+        if (mouseRelease->button == sf::Mouse::Button::Left) {
+          isDragging = false;
+        }
+      }
+      if (auto *mouseMove = event->getIf<sf::Event::MouseMoved>()) {
+        if (isDragging) {
+          float dx = static_cast<float>(lastMousePos.x - mouseMove->position.x);
+          float dy = static_cast<float>(lastMousePos.y - mouseMove->position.y);
+          if (comparisonView.isRunning()) {
+            comparisonView.pan(dx * 0.5f, dy * 0.5f);
+          } else {
+            camera.pan(dx, dy);
+          }
+          lastMousePos = {mouseMove->position.x, mouseMove->position.y};
         }
       }
 
@@ -553,7 +581,7 @@ int main() {
 
         case sf::Keyboard::Key::Enter:
           if (comparisonView.isVisible() && comparisonView.isMenuOpen()) {
-            comparisonView.handleInput(sf::Keyboard::Key::Enter);
+            comparisonView.handleInput(keyPressed->code);
             // If comparison started, init solvers
             if (comparisonView.isRunning()) {
               comparisonView.initSolvers(grid->getStart(), grid->getEnd());
@@ -706,8 +734,12 @@ int main() {
           break;
 
         case sf::Keyboard::Key::F:
-          camera.fitToMaze(grid->getWidth(), grid->getHeight(),
-                           renderer.getCellSize());
+          if (comparisonView.isRunning()) {
+            camera.fitToMaze(grid->getWidth(), grid->getHeight(), 10.0f);
+          } else {
+            camera.fitToMaze(grid->getWidth(), grid->getHeight(),
+                             renderer.getCellSize());
+          }
           break;
 
         case sf::Keyboard::Key::Equal:
@@ -795,10 +827,17 @@ int main() {
 
       // Mouse wheel for zoom
       if (auto *scroll = event->getIf<sf::Event::MouseWheelScrolled>()) {
-        if (scroll->delta > 0) {
-          camera.zoomIn();
+        // Read exact delta and calculate dynamic zoom factor
+        float zoomFactor = 1.0f - (scroll->delta * 0.1f);
+
+        // Clamp to prevent inversion or crashing
+        if (zoomFactor < 0.1f)
+          zoomFactor = 0.1f;
+
+        if (comparisonView.isRunning()) {
+          comparisonView.zoom(zoomFactor);
         } else {
-          camera.zoomOut();
+          camera.zoom(zoomFactor);
         }
       }
 
@@ -960,9 +999,9 @@ int main() {
     // Render comparison view if visible (takes over the screen)
     if (comparisonView.isVisible()) {
       if (comparisonView.isRunning()) {
-        // Running comparison - don't show base maze, only split grids
-        uiPanel.render(window);
+        // Running comparison - show comparison grids + main UI
         comparisonView.render(window);
+        uiPanel.render(window);
       } else {
         // Menu open - show normal view behind menu
         renderer.render();

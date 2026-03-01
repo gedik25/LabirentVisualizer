@@ -26,25 +26,96 @@ void Renderer::render() {
   // Apply camera view
   m_camera.apply(m_window);
 
-  // Get visible cell range for culling
-  Camera::CellRange range = m_camera.getVisibleCells(
-      m_cellSize, m_grid->getWidth(), m_grid->getHeight());
+  int w = m_grid->getWidth();
+  int h = m_grid->getHeight();
+  int tilesX = w * 2 + 1;
+  int tilesY = h * 2 + 1;
+
+  // We could use spatial culling here, but for now drawn entirely.
+  // With tileSize, total size is tilesX * m_cellSize
+
+  sf::Color wallColor = sf::Color::Black;
+
+  auto getCellColor = [&](int cx, int cy) -> sf::Color {
+    uint8_t flags = m_grid->getCell(cx, cy);
+    TerrainType terrain = m_grid->getTerrain(cx, cy);
+    sf::Color color = getTerrainColor(terrain);
+
+    if (hasFlag(flags, CellFlags::InPath)) {
+      color = sf::Color{255, 0, 255}; // Path magenta
+    } else if (hasFlag(flags, CellFlags::Current)) {
+      color = sf::Color{255, 255, 0}; // Yellow
+    } else if (hasFlag(flags, CellFlags::Visited)) {
+      color = getTheme().getVisitedColor(m_algorithmType);
+    } else if (hasFlag(flags, CellFlags::Queued)) {
+      color = getTheme().getQueuedColor(m_algorithmType);
+    }
+    return color;
+  };
+
+  auto getPassageColor = [&](int c1x, int c1y, int c2x, int c2y) -> sf::Color {
+    uint8_t f1 = m_grid->getCell(c1x, c1y);
+    uint8_t f2 = m_grid->getCell(c2x, c2y);
+
+    if (hasFlag(f1, CellFlags::InPath) && hasFlag(f2, CellFlags::InPath))
+      return sf::Color{255, 0, 255};
+    if (hasFlag(f1, CellFlags::Visited) && hasFlag(f2, CellFlags::Visited))
+      return getTheme().getVisitedColor(m_algorithmType);
+    if (hasFlag(f1, CellFlags::Queued) && hasFlag(f2, CellFlags::Queued))
+      return getTheme().getQueuedColor(m_algorithmType);
+
+    return sf::Color{40, 40, 40};
+  };
+
+  m_cellShape.setSize({m_cellSize, m_cellSize});
 
   m_stats.cellsRendered = 0;
 
-  // Render only visible cells
-  for (int y = range.minY; y <= range.maxY; ++y) {
-    for (int x = range.minX; x <= range.maxX; ++x) {
-      renderCell(x, y);
+  for (int ty = 0; ty < tilesY; ++ty) {
+    for (int tx = 0; tx < tilesX; ++tx) {
+      float px = tx * m_cellSize;
+      float py = ty * m_cellSize;
+      m_cellShape.setPosition({px, py});
+
+      bool isWallX = (tx % 2 == 0);
+      bool isWallY = (ty % 2 == 0);
+
+      if (isWallX && isWallY) {
+        m_cellShape.setFillColor(wallColor);
+      } else if (!isWallX && !isWallY) {
+        int cx = (tx - 1) / 2;
+        int cy = (ty - 1) / 2;
+        m_cellShape.setFillColor(getCellColor(cx, cy));
+      } else if (isWallX && !isWallY) {
+        int cx = tx / 2;
+        int cy = (ty - 1) / 2;
+        if (cx == 0 || cx == w) {
+          m_cellShape.setFillColor(wallColor);
+        } else {
+          if (hasFlag(m_grid->getCell(cx, cy), CellFlags::WallWest)) {
+            m_cellShape.setFillColor(wallColor);
+          } else {
+            m_cellShape.setFillColor(getPassageColor(cx - 1, cy, cx, cy));
+          }
+        }
+      } else if (!isWallX && isWallY) {
+        int cx = (tx - 1) / 2;
+        int cy = ty / 2;
+        if (cy == 0 || cy == h) {
+          m_cellShape.setFillColor(wallColor);
+        } else {
+          if (hasFlag(m_grid->getCell(cx, cy), CellFlags::WallNorth)) {
+            m_cellShape.setFillColor(wallColor);
+          } else {
+            m_cellShape.setFillColor(getPassageColor(cx, cy - 1, cx, cy));
+          }
+        }
+      }
+
+      m_window.draw(m_cellShape);
       ++m_stats.cellsRendered;
     }
   }
-
-  // Render terrain
-  renderTerrain();
-
-  // Render path overlay
-  renderPath();
 
   // Render start/end markers
   renderMarkers();
@@ -62,8 +133,10 @@ void Renderer::autoCalculateCellSize() {
     return;
 
   sf::Vector2u windowSize = m_window.getSize();
-  float maxCellWidth = static_cast<float>(windowSize.x) / m_grid->getWidth();
-  float maxCellHeight = static_cast<float>(windowSize.y) / m_grid->getHeight();
+  float gridTilesX = m_grid->getWidth() * 2 + 1.0f;
+  float gridTilesY = m_grid->getHeight() * 2 + 1.0f;
+  float maxCellWidth = static_cast<float>(windowSize.x) / gridTilesX;
+  float maxCellHeight = static_cast<float>(windowSize.y) / gridTilesY;
 
   m_cellSize = std::min(maxCellWidth, maxCellHeight) * 0.9f;
   m_cellSize = std::max(m_cellSize, 4.0f); // Minimum cell size
@@ -143,16 +216,18 @@ void Renderer::renderMarkers() {
 
   // Start marker
   Position start = m_grid->getStart();
-  float startX = start.x * m_cellSize + m_cellSize / 2.0f - markerRadius;
-  float startY = start.y * m_cellSize + m_cellSize / 2.0f - markerRadius;
+  float startX =
+      (start.x * 2 + 1) * m_cellSize + m_cellSize / 2.0f - markerRadius;
+  float startY =
+      (start.y * 2 + 1) * m_cellSize + m_cellSize / 2.0f - markerRadius;
   m_markerShape.setPosition({startX, startY});
   m_markerShape.setFillColor(theme.start);
   m_window.draw(m_markerShape);
 
   // End marker
   Position end = m_grid->getEnd();
-  float endX = end.x * m_cellSize + m_cellSize / 2.0f - markerRadius;
-  float endY = end.y * m_cellSize + m_cellSize / 2.0f - markerRadius;
+  float endX = (end.x * 2 + 1) * m_cellSize + m_cellSize / 2.0f - markerRadius;
+  float endY = (end.y * 2 + 1) * m_cellSize + m_cellSize / 2.0f - markerRadius;
   m_markerShape.setPosition({endX, endY});
   m_markerShape.setFillColor(theme.end);
   m_window.draw(m_markerShape);
