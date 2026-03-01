@@ -26,3 +26,6 @@ cmake-build-*/
 
 # Dependencies
 vcpkg_installed/
+
+# Agent files
+.agent/
