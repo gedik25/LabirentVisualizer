@@ -1,6 +1,13 @@
 # Build directories
 build/
 cmake-build-*/
+out/
+bin/
+obj/
+x64/
+x86/
+ARM/
+ARM64/
 
 # IDE files
 .idea/
@@ -8,24 +15,41 @@ cmake-build-*/
 *.swp
 *.swo
 *~
+.vs/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
 
-# Compiled files
+# Compiled files and libraries
 *.o
 *.obj
 *.exe
 *.out
 *.app
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+Icon
 
-# Cursor
+# Cursor & Agent files
 .cursor/
+.agent/
+.system_generated/
+*.log
 
 # Dependencies
 vcpkg_installed/
 
-# Agent files
-.agent/
+# Local saved mazes (keep directory structure but ignore contents)
+mazes/*
+!mazes/.gitkeep
+
