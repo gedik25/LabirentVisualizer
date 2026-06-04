@@ -46,7 +46,14 @@ void Renderer::render() {
     } else if (hasFlag(flags, CellFlags::Current)) {
       color = sf::Color{255, 255, 0}; // Yellow
     } else if (hasFlag(flags, CellFlags::Visited)) {
-      color = getTheme().getVisitedColor(m_algorithmType);
+      if (m_heatmapEnabled && m_maxVisited > 0) {
+        ++m_visitCounter;
+        float t = static_cast<float>(m_visitCounter) /
+                  static_cast<float>(m_maxVisited);
+        color = heatmapColor(t);
+      } else {
+        color = getTheme().getVisitedColor(m_algorithmType);
+      }
     } else if (hasFlag(flags, CellFlags::Queued)) {
       color = getTheme().getQueuedColor(m_algorithmType);
     }
@@ -59,16 +66,27 @@ void Renderer::render() {
 
     if (hasFlag(f1, CellFlags::InPath) && hasFlag(f2, CellFlags::InPath))
       return sf::Color{255, 0, 255};
-    if (hasFlag(f1, CellFlags::Visited) && hasFlag(f2, CellFlags::Visited))
+    if (hasFlag(f1, CellFlags::Visited) && hasFlag(f2, CellFlags::Visited)) {
+      if (m_heatmapEnabled && m_maxVisited > 0) {
+        ++m_visitCounter;
+        float t = static_cast<float>(m_visitCounter) /
+                  static_cast<float>(m_maxVisited);
+        return heatmapColor(t);
+      }
       return getTheme().getVisitedColor(m_algorithmType);
+    }
     if (hasFlag(f1, CellFlags::Queued) && hasFlag(f2, CellFlags::Queued))
       return getTheme().getQueuedColor(m_algorithmType);
 
-    return sf::Color{40, 40, 40};
+    TerrainType t1 = m_grid->getTerrain(c1x, c1y);
+    TerrainType t2 = m_grid->getTerrain(c2x, c2y);
+    TerrainType terrain = (t1 != TerrainType::Normal) ? t1 : t2;
+    return getTerrainColor(terrain);
   };
 
   m_cellShape.setSize({m_cellSize, m_cellSize});
 
+  m_visitCounter = 0; // Reset heatmap visit counter each frame
   m_stats.cellsRendered = 0;
 
   for (int ty = 0; ty < tilesY; ++ty) {
@@ -257,47 +275,6 @@ sf::Color Renderer::getCellColor(int x, int y) const {
   return theme.cellEmpty;
 }
 
-void Renderer::renderTerrain() {
-  if (!m_grid)
-    return;
-
-  // Get visible cell range
-  Camera::CellRange range = m_camera.getVisibleCells(
-      m_cellSize, m_grid->getWidth(), m_grid->getHeight());
-
-  // Render terrain as semi-transparent overlay
-  for (int y = range.minY; y <= range.maxY; ++y) {
-    for (int x = range.minX; x <= range.maxX; ++x) {
-      TerrainType terrain = m_grid->getTerrain(x, y);
-
-      // Skip normal terrain (no overlay needed)
-      if (terrain == TerrainType::Normal)
-        continue;
-
-      // Don't overlay on visited/path cells
-      uint8_t cell = m_grid->getCell(x, y);
-      if (hasFlag(cell, CellFlags::InPath) ||
-          hasFlag(cell, CellFlags::Visited) ||
-          hasFlag(cell, CellFlags::Current)) {
-        continue;
-      }
-
-      float px = x * m_cellSize;
-      float py = y * m_cellSize;
-
-      sf::Color terrainColor = getTerrainColor(terrain);
-      terrainColor.a = 180; // Semi-transparent
-
-      m_cellShape.setSize(
-          {m_cellSize - m_wallThickness, m_cellSize - m_wallThickness});
-      m_cellShape.setPosition(
-          {px + m_wallThickness / 2, py + m_wallThickness / 2});
-      m_cellShape.setFillColor(terrainColor);
-      m_window.draw(m_cellShape);
-    }
-  }
-}
-
 void Renderer::renderPath() {
   if (!m_grid)
     return;
@@ -366,6 +343,39 @@ void Renderer::updateFPS() {
     m_frameCount = 0;
     m_fpsClock.restart();
   }
+}
+
+sf::Color Renderer::heatmapColor(float t) const {
+  // Clamp t to [0, 1]
+  if (t < 0.0f)
+    t = 0.0f;
+  if (t > 1.0f)
+    t = 1.0f;
+
+  // 5-stop gradient: Blue -> Cyan -> Green -> Yellow -> Red
+  uint8_t r, g, b;
+  if (t < 0.25f) {
+    float s = t / 0.25f;
+    r = 0;
+    g = static_cast<uint8_t>(255 * s);
+    b = 255;
+  } else if (t < 0.5f) {
+    float s = (t - 0.25f) / 0.25f;
+    r = 0;
+    g = 255;
+    b = static_cast<uint8_t>(255 * (1.0f - s));
+  } else if (t < 0.75f) {
+    float s = (t - 0.5f) / 0.25f;
+    r = static_cast<uint8_t>(255 * s);
+    g = 255;
+    b = 0;
+  } else {
+    float s = (t - 0.75f) / 0.25f;
+    r = 255;
+    g = static_cast<uint8_t>(255 * (1.0f - s));
+    b = 0;
+  }
+  return sf::Color{r, g, b};
 }
 
 } // namespace maze

@@ -18,6 +18,7 @@
 #include "Algorithms/DFSSolver.hpp"
 #include "Algorithms/DijkstraSolver.hpp"
 #include "Algorithms/GreedySolver.hpp"
+#include "Algorithms/JPSSolver.hpp"
 
 // Generators
 #include "Generators/BinaryTreeGenerator.hpp"
@@ -51,7 +52,15 @@ enum class GeneratorType {
 };
 
 // Solver type enum
-enum class SolverType { BFS = 0, DFS, AStar, Dijkstra, Greedy, Bidirectional };
+enum class SolverType {
+  BFS = 0,
+  DFS,
+  AStar,
+  Dijkstra,
+  Greedy,
+  Bidirectional,
+  JPS
+};
 
 // Configuration
 struct Config {
@@ -179,8 +188,11 @@ std::string getSolverName(SolverType type) {
     return "Greedy";
   case SolverType::Bidirectional:
     return "Bidirectional BFS";
+  case SolverType::JPS:
+    return "JPS";
+  default:
+    return "Unknown";
   }
-  return "Unknown";
 }
 
 int main() {
@@ -268,6 +280,28 @@ int main() {
     std::cout << std::endl;
   };
 
+  menu.onSaveGrid = [&]() {
+    if (grid->saveToFile("mazes/custom_maze.maze")) {
+      std::cout << "Saved maze to mazes/custom_maze.maze\n";
+    } else {
+      std::cerr << "Failed to save maze\n";
+    }
+  };
+
+  menu.onLoadGrid = [&]() {
+    if (grid->loadFromFile("mazes/custom_maze.maze")) {
+      std::cout << "Loaded custom_maze.maze\n";
+      config.gridWidth = grid->getWidth();
+      config.gridHeight = grid->getHeight();
+      uiPanel.setGridSize(config.gridWidth, config.gridHeight);
+      renderer.autoCalculateCellSize();
+      camera.fitToMaze(grid->getWidth(), grid->getHeight(),
+                       renderer.getCellSize());
+    } else {
+      std::cerr << "Failed to load mazes/custom_maze.maze\n";
+    }
+  };
+
   menu.onGeneratorChange = [&](int idx) {
     config.generatorType = static_cast<GeneratorType>(idx);
     uiPanel.setGeneratorName(getGeneratorName(config.generatorType));
@@ -304,6 +338,7 @@ int main() {
   auto dijkstraSolver = std::make_unique<DijkstraSolver>(grid);
   auto greedySolver = std::make_unique<GreedySolver>(grid);
   auto bidirSolver = std::make_unique<BidirectionalBFS>(grid);
+  auto jpsSolver = std::make_unique<JPSSolver>(grid);
 
   // State
   AppState state = AppState::Idle;
@@ -326,6 +361,8 @@ int main() {
       return greedySolver.get();
     case SolverType::Bidirectional:
       return bidirSolver.get();
+    case SolverType::JPS:
+      return jpsSolver.get();
     }
     return bfsSolver.get();
   };
@@ -501,6 +538,8 @@ int main() {
   printStatus(state, config);
 
   bool isDragging = false;
+  bool isDraggingStart = false;
+  bool isDraggingEnd = false;
   sf::Vector2i lastMousePos;
 
   // Main loop
@@ -533,10 +572,53 @@ int main() {
           isDragging = true;
           lastMousePos = {mousePress->position.x, mousePress->position.y};
         }
+        // Right-click: Toggle wall at clicked cell
+        if (mousePress->button == sf::Mouse::Button::Right &&
+            !comparisonView.isRunning()) {
+          sf::Vector2f worldPos = camera.screenToWorld(
+              {mousePress->position.x, mousePress->position.y});
+          float cs = renderer.getCellSize();
+          int cx = static_cast<int>(worldPos.x / cs);
+          int cy = static_cast<int>(worldPos.y / cs);
+          if (grid->isValid(cx, cy)) {
+            Position clickPos{cx, cy};
+            // Don't allow toggling start/end
+            if (clickPos != grid->getStart() && clickPos != grid->getEnd()) {
+              if (grid->hasFlag(cx, cy, maze::CellFlags::AllWalls)) {
+                // Currently a wall → make walkable (clear all wall flags)
+                grid->clearFlag(cx, cy, maze::CellFlags::AllWalls);
+              } else {
+                // Currently walkable → make wall
+                grid->setCell(cx, cy, maze::CellFlags::AllWalls);
+              }
+            }
+          }
+        }
+        // Middle-click: start dragging start/end marker
+        if (mousePress->button == sf::Mouse::Button::Middle &&
+            !comparisonView.isRunning()) {
+          sf::Vector2f worldPos = camera.screenToWorld(
+              {mousePress->position.x, mousePress->position.y});
+          float cs = renderer.getCellSize();
+          int cx = static_cast<int>(worldPos.x / cs);
+          int cy = static_cast<int>(worldPos.y / cs);
+          if (grid->isValid(cx, cy)) {
+            Position clickPos{cx, cy};
+            if (clickPos == grid->getStart()) {
+              isDraggingStart = true;
+            } else if (clickPos == grid->getEnd()) {
+              isDraggingEnd = true;
+            }
+          }
+        }
       }
       if (auto *mouseRelease = event->getIf<sf::Event::MouseButtonReleased>()) {
         if (mouseRelease->button == sf::Mouse::Button::Left) {
           isDragging = false;
+        }
+        if (mouseRelease->button == sf::Mouse::Button::Middle) {
+          isDraggingStart = false;
+          isDraggingEnd = false;
         }
       }
       if (auto *mouseMove = event->getIf<sf::Event::MouseMoved>()) {
@@ -549,6 +631,23 @@ int main() {
             camera.pan(dx, dy);
           }
           lastMousePos = {mouseMove->position.x, mouseMove->position.y};
+        }
+        // Drag start/end marker
+        if ((isDraggingStart || isDraggingEnd) && !comparisonView.isRunning()) {
+          sf::Vector2f worldPos = camera.screenToWorld(
+              {mouseMove->position.x, mouseMove->position.y});
+          float cs = renderer.getCellSize();
+          int cx = static_cast<int>(worldPos.x / cs);
+          int cy = static_cast<int>(worldPos.y / cs);
+          if (grid->isValid(cx, cy) &&
+              !grid->hasFlag(cx, cy, maze::CellFlags::AllWalls)) {
+            Position newPos{cx, cy};
+            if (isDraggingStart && newPos != grid->getEnd()) {
+              grid->setStart(newPos);
+            } else if (isDraggingEnd && newPos != grid->getStart()) {
+              grid->setEnd(newPos);
+            }
+          }
         }
       }
 
@@ -621,6 +720,13 @@ int main() {
           uiPanel.toggleHelp();
           break;
 
+        case sf::Keyboard::Key::V:
+          renderer.setHeatmapEnabled(!renderer.getHeatmapEnabled());
+          std::cout << "\nHeatmap: "
+                    << (renderer.getHeatmapEnabled() ? "ON" : "OFF")
+                    << std::endl;
+          break;
+
         // Solver selection
         case sf::Keyboard::Key::B:
           startSolving(SolverType::BFS);
@@ -646,6 +752,10 @@ int main() {
 
         case sf::Keyboard::Key::I:
           startSolving(SolverType::Bidirectional);
+          break;
+
+        case sf::Keyboard::Key::P:
+          startSolving(SolverType::JPS);
           break;
 
         // Generator selection with Shift
@@ -742,6 +852,27 @@ int main() {
           }
           break;
 
+        case sf::Keyboard::Key::O:
+          if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) ||
+              sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RControl) ||
+              sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LSystem) ||
+              sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RSystem)) {
+            if (grid->loadFromFile("mazes/custom_maze.maze")) {
+              std::cout << "Successfully loaded custom_maze.maze\n";
+              config.gridWidth = grid->getWidth();
+              config.gridHeight = grid->getHeight();
+              uiPanel.setGridSize(config.gridWidth, config.gridHeight);
+              renderer.autoCalculateCellSize();
+              camera.fitToMaze(grid->getWidth(), grid->getHeight(),
+                               renderer.getCellSize());
+              comparisonView.resetSolvers();
+              state = AppState::Idle;
+            } else {
+              std::cerr << "Failed to load mazes/custom_maze.maze\n";
+            }
+          }
+          break;
+
         case sf::Keyboard::Key::Equal:
         case sf::Keyboard::Key::Add:
           config.animationDelay =
@@ -769,8 +900,18 @@ int main() {
           }
           break;
         case sf::Keyboard::Key::S:
-          if (!menu.isVisible())
+          if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) ||
+              sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RControl) ||
+              sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LSystem) ||
+              sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RSystem)) {
+            if (grid->saveToFile("mazes/custom_maze.maze")) {
+              std::cout << "Saved maze to mazes/custom_maze.maze\n";
+            } else {
+              std::cerr << "Failed to save maze\n";
+            }
+          } else if (!menu.isVisible()) {
             camera.pan(0, 1);
+          }
           break;
         case sf::Keyboard::Key::Down:
           if (comparisonView.isVisible() && comparisonView.isMenuOpen()) {
@@ -1005,19 +1146,19 @@ int main() {
       } else {
         // Menu open - show normal view behind menu
         renderer.render();
-        if (config.terrainEnabled) {
-          renderer.renderTerrain();
-        }
+        // Terrain rendering logic is now built into renderer.render()
+
         uiPanel.render(window);
         comparisonView.render(window);
       }
     } else {
+      if (currentSolver) {
+        renderer.setMaxVisited(
+            static_cast<int>(currentSolver->getVisited().size()));
+      }
       renderer.render();
 
-      // Render terrain colors if enabled
-      if (config.terrainEnabled) {
-        renderer.renderTerrain();
-      }
+      // Terrain rendering logic is now built into renderer.render()
 
       uiPanel.render(window);
       menu.render(window);

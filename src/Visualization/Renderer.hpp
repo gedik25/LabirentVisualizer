@@ -48,10 +48,11 @@ public:
   // Set algorithm type for coloring
   void setAlgorithmType(Theme::AlgorithmType type) { m_algorithmType = type; }
 
-  // Render terrain colors
-  void renderTerrain();
+  // Heatmap mode
+  void setHeatmapEnabled(bool enabled) { m_heatmapEnabled = enabled; }
+  bool getHeatmapEnabled() const { return m_heatmapEnabled; }
+  void setMaxVisited(int maxVisited) { m_maxVisited = maxVisited; }
 
-  // Render path overlay
   void renderPath();
 
   // Render statistics
@@ -73,6 +74,9 @@ private:
   float m_cellSize = 20.0f;
   float m_wallThickness = 2.0f;
   Theme::AlgorithmType m_algorithmType = Theme::AlgorithmType::BFS;
+  bool m_heatmapEnabled = false;
+  int m_maxVisited = 1;
+  int m_visitCounter = 0;
 
   RenderStats m_stats{0, 0, 0.0f};
   sf::Clock m_fpsClock;
@@ -103,6 +107,9 @@ private:
 
   // Update FPS counter
   void updateFPS();
+
+  // Heatmap gradient: returns a color from blue (cold/near) to red (hot/far)
+  sf::Color heatmapColor(float t) const;
 };
 
 } // namespace maze

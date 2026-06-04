@@ -2,9 +2,10 @@
 
 #include "Cell.hpp"
 #include "Terrain.hpp"
-#include <vector>
-#include <stdexcept>
 #include <random>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace maze {
 
@@ -16,87 +17,94 @@ namespace maze {
  */
 class Grid {
 public:
-    Grid(int width, int height);
-    
-    // Dimensions
-    int getWidth() const { return m_width; }
-    int getHeight() const { return m_height; }
-    size_t getCellCount() const { return m_cells.size(); }
-    
-    // Bounds checking
-    bool isValid(int x, int y) const;
-    bool isValid(const Position& pos) const;
-    
-    // Cell access
-    uint8_t getCell(int x, int y) const;
-    uint8_t getCell(const Position& pos) const;
-    void setCell(int x, int y, uint8_t value);
-    void setCell(const Position& pos, uint8_t value);
-    
-    // Flag operations
-    bool hasFlag(int x, int y, uint8_t flag) const;
-    bool hasFlag(const Position& pos, uint8_t flag) const;
-    void setFlag(int x, int y, uint8_t flag);
-    void setFlag(const Position& pos, uint8_t flag);
-    void clearFlag(int x, int y, uint8_t flag);
-    void clearFlag(const Position& pos, uint8_t flag);
-    
-    // Wall operations
-    bool hasWall(int x, int y, Direction dir) const;
-    bool hasWall(const Position& pos, Direction dir) const;
-    void setWall(int x, int y, Direction dir);
-    void removeWall(int x, int y, Direction dir);
-    void removeWallBetween(const Position& from, const Position& to);
-    
-    // Check if can move from one cell to another (no wall blocking)
-    bool canMove(const Position& from, Direction dir) const;
-    bool canMove(const Position& from, const Position& to) const;
-    
-    // Get neighbor position in a direction
-    Position getNeighbor(const Position& pos, Direction dir) const;
-    
-    // Get all valid neighbors (within bounds)
-    std::vector<Position> getNeighbors(const Position& pos) const;
-    
-    // Get all accessible neighbors (no wall blocking)
-    std::vector<Position> getAccessibleNeighbors(const Position& pos) const;
-    
-    // Reset operations
-    void reset();          // Reset to all walls, clear solver state
-    void clearSolverState(); // Clear only solver flags (Visited, InPath, Current, Queued)
-    
-    // Start and end positions
-    Position getStart() const { return m_start; }
-    Position getEnd() const { return m_end; }
-    void setStart(const Position& pos) { m_start = pos; }
-    void setEnd(const Position& pos) { m_end = pos; }
-    
-    // Terrain operations
-    TerrainType getTerrain(int x, int y) const;
-    TerrainType getTerrain(const Position& pos) const;
-    void setTerrain(int x, int y, TerrainType type);
-    void setTerrain(const Position& pos, TerrainType type);
-    
-    // Get movement cost between two adjacent cells
-    float getMovementCost(const Position& from, const Position& to) const;
-    float getMovementCost(const Position& pos) const;
-    
-    // Generate random terrain based on distribution
-    void generateTerrain(const TerrainDistribution& dist, unsigned int seed);
-    
-    // Clear all terrain (set to Normal)
-    void clearTerrain();
+  Grid(int width, int height);
+
+  // Dimensions
+  int getWidth() const { return m_width; }
+  int getHeight() const { return m_height; }
+  size_t getCellCount() const { return m_cells.size(); }
+
+  // Bounds checking
+  bool isValid(int x, int y) const;
+  bool isValid(const Position &pos) const;
+
+  // Cell access
+  uint8_t getCell(int x, int y) const;
+  uint8_t getCell(const Position &pos) const;
+  void setCell(int x, int y, uint8_t value);
+  void setCell(const Position &pos, uint8_t value);
+
+  // Flag operations
+  bool hasFlag(int x, int y, uint8_t flag) const;
+  bool hasFlag(const Position &pos, uint8_t flag) const;
+  void setFlag(int x, int y, uint8_t flag);
+  void setFlag(const Position &pos, uint8_t flag);
+  void clearFlag(int x, int y, uint8_t flag);
+  void clearFlag(const Position &pos, uint8_t flag);
+
+  // Wall operations
+  bool hasWall(int x, int y, Direction dir) const;
+  bool hasWall(const Position &pos, Direction dir) const;
+  void setWall(int x, int y, Direction dir);
+  void removeWall(int x, int y, Direction dir);
+  void removeWallBetween(const Position &from, const Position &to);
+
+  // Check if can move from one cell to another (no wall blocking)
+  bool canMove(const Position &from, Direction dir) const;
+  bool canMove(const Position &from, const Position &to) const;
+
+  // Get neighbor position in a direction
+  Position getNeighbor(const Position &pos, Direction dir) const;
+
+  // Get all valid neighbors (within bounds)
+  std::vector<Position> getNeighbors(const Position &pos) const;
+
+  // Get all accessible neighbors (no wall blocking)
+  std::vector<Position> getAccessibleNeighbors(const Position &pos) const;
+
+  // Reset operations
+  void reset();            // Reset to all walls, clear solver state
+  void clearSolverState(); // Clear only solver flags (Visited, InPath, Current,
+                           // Queued)
+
+  // Start and end positions
+  Position getStart() const { return m_start; }
+  Position getEnd() const { return m_end; }
+  void setStart(const Position &pos) { m_start = pos; }
+  void setEnd(const Position &pos) { m_end = pos; }
+
+  // Terrain operations
+  TerrainType getTerrain(int x, int y) const;
+  TerrainType getTerrain(const Position &pos) const;
+  void setTerrain(int x, int y, TerrainType type);
+  void setTerrain(const Position &pos, TerrainType type);
+
+  // Get movement cost between two adjacent cells
+  float getMovementCost(const Position &from, const Position &to) const;
+  float getMovementCost(const Position &pos) const;
+
+  // Generate random terrain based on distribution
+  void generateTerrain(const TerrainDistribution &dist, unsigned int seed);
+
+  // Clear all terrain (set to Normal)
+  void clearTerrain();
+
+  // Data I/O
+  bool saveToFile(const std::string &filename) const;
+  bool loadFromFile(const std::string &filename);
 
 private:
-    int m_width;
-    int m_height;
-    std::vector<uint8_t> m_cells;
-    std::vector<uint8_t> m_terrain;  // Terrain type for each cell
-    Position m_start;
-    Position m_end;
-    
-    // Convert 2D coordinates to 1D index
-    size_t index(int x, int y) const { return static_cast<size_t>(y * m_width + x); }
+  int m_width;
+  int m_height;
+  std::vector<uint8_t> m_cells;
+  std::vector<uint8_t> m_terrain; // Terrain type for each cell
+  Position m_start;
+  Position m_end;
+
+  // Convert 2D coordinates to 1D index
+  size_t index(int x, int y) const {
+    return static_cast<size_t>(y * m_width + x);
+  }
 };
 
 } // namespace maze

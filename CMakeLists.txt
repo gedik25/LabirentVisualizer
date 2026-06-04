@@ -29,6 +29,7 @@ set(SOURCES
     src/Algorithms/DijkstraSolver.cpp
     src/Algorithms/GreedySolver.cpp
     src/Algorithms/BidirectionalBFS.cpp
+    src/Algorithms/JPSSolver.cpp
     src/Generators/PrimGenerator.cpp
     src/Generators/KruskalGenerator.cpp
     src/Generators/BinaryTreeGenerator.cpp
@@ -54,6 +55,7 @@ set(HEADERS
     src/Algorithms/DijkstraSolver.hpp
     src/Algorithms/GreedySolver.hpp
     src/Algorithms/BidirectionalBFS.hpp
+    src/Algorithms/JPSSolver.hpp
     src/Generators/IMazeGenerator.hpp
     src/Generators/PrimGenerator.hpp
     src/Generators/KruskalGenerator.hpp

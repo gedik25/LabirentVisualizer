@@ -274,14 +274,38 @@ void ComparisonView::zoom(float factor) {
 }
 
 void ComparisonView::fitToMaze() {
-  m_zoom = 1.0f;
-  m_pan = {0.0f, 0.0f};
+  if (m_viewports.empty() || !m_grid)
+    return;
+
+  // We use the first viewport to calculate the ideal fit.
+  auto &vp = m_viewports[0];
+
+  // Available space inside the sub-panel (deducting headers/padding)
+  float availableW = vp.width - 10.0f;
+  float availableH = vp.height - 35.0f;
+
+  if (availableW <= 0 || availableH <= 0)
+    return;
+
+  // Maze virtual bounds
+  int w = m_grid->getWidth();
+  int h = m_grid->getHeight();
+  float virtualMazeW = (w * 2 + 1) * 10.0f;
+  float virtualMazeH = (h * 2 + 1) * 10.0f;
+
+  float paddingFactor = 0.9f;
+  float zoomX = (availableW * paddingFactor) / virtualMazeW;
+  float zoomY = (availableH * paddingFactor) / virtualMazeH;
+
+  m_zoom = std::min(zoomX, zoomY);
+  m_pan = {0.0f, 0.0f}; // Center offset resets to 0
 }
 
 void ComparisonView::pan(float dx, float dy) {
-  float speed = 20.0f / m_zoom; // Adjusted for zoom level
-  m_pan.x += dx * speed;
-  m_pan.y += dy * speed;
+  float speed =
+      1.0f / m_zoom; // Align with exact mouse movement mapped to scale
+  m_pan.x -= dx * speed;
+  m_pan.y -= dy * speed;
 }
 
 void ComparisonView::calculateViewports(sf::RenderWindow &window) {
@@ -513,33 +537,15 @@ void ComparisonView::renderMiniGrid(sf::RenderWindow &window, Grid &grid,
   sf::Vector2u winSize = window.getSize();
   sf::View view;
 
-  // To avoid stretching, find the aspect ratio of the target viewport
-  float vpRatio = vp.width / vp.height;
-  float mazeRatio = virtualMazeW / virtualMazeH;
-
   sf::Vector2f viewSize;
-
-  // If viewport is wider than maze, fit to height, otherwise fit to width
-  // This guarantees the maze covers the maximum allowed space before adding
-  // dead space padding.
-  if (vpRatio > mazeRatio) {
-    viewSize.y = virtualMazeH;
-    viewSize.x = virtualMazeH * vpRatio;
-  } else {
-    viewSize.x = virtualMazeW;
-    viewSize.y = virtualMazeW / vpRatio;
-  }
-
-  // Apply our dedicated comparison zoom factor
-  viewSize.x /= m_zoom;
-  viewSize.y /= m_zoom;
+  viewSize.x = vp.width / m_zoom;
+  viewSize.y = vp.height / m_zoom;
 
   view.setSize(viewSize);
 
   // Center is the middle of the maze adjusted by user panning.
-  // The user prompt specifically requested this dynamic centering logic.
-  sf::Vector2f center((virtualMazeW / 2.0f) - m_pan.x,
-                      (virtualMazeH / 2.0f) - m_pan.y);
+  sf::Vector2f center((virtualMazeW / 2.0f) + m_pan.x,
+                      (virtualMazeH / 2.0f) + m_pan.y);
   view.setCenter(center);
 
   // Set physical viewport rendering bounds
@@ -584,8 +590,10 @@ void ComparisonView::renderMiniGrid(sf::RenderWindow &window, Grid &grid,
     if (hasFlag(f1, CellFlags::Visited) && hasFlag(f2, CellFlags::Visited))
       return visitedColor;
 
-    // Average or fall back to empty color
-    return sf::Color{40, 40, 40}; // Empty passage
+    TerrainType t1 = grid.getTerrain(c1x, c1y);
+    TerrainType t2 = grid.getTerrain(c2x, c2y);
+    TerrainType terrain = (t1 != TerrainType::Normal) ? t1 : t2;
+    return getTerrainColor(terrain);
   };
 
   for (int ty = 0; ty < tilesY; ++ty) {
